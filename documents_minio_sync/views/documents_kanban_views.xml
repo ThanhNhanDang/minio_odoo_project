@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="document_view_kanban_inherit_minio" model="ir.ui.view">
+        <field name="name">documents.document.kanban.inherit.minio</field>
+        <field name="model">documents.document</field>
+        <field name="inherit_id" ref="documents.document_view_kanban"/>
+        <field name="arch" type="xml">
+            <!-- 
+                1. Fix for type='url': Odoo's default logic only shows url_preview_image if set.
+                MinIO documents use the download URL directly if url_preview_image isn't yet computed.
+            -->
+            <xpath expr="//a[@t-elif=&quot;record.type.raw_value =='url'&quot;]//img[@t-if='record.url_preview_image.raw_value']" position="attributes">
+                <attribute name="t-if">record.url_preview_image.raw_value or (record.url.raw_value and record.url.raw_value.includes('/api/download') and record.mimetype.value and record.mimetype.value.indexOf('image/') === 0)</attribute>
+                <attribute name="t-att-src">record.url_preview_image.raw_value || record.url.raw_value</attribute>
+            </xpath>
+
+            <!-- 
+                2. Fix for type='binary': For MinIO images, Odoo tries to load the 'thumbnail' field which is empty.
+                We force use the MinIO URL only if it's an image. PDFs use Odoo's default thumbnail.
+            -->
+            <xpath expr="//t[@t-elif='hasThumbnail']//img" position="attributes">
+                <attribute name="t-att-src">(record.url.raw_value and record.url.raw_value.includes('/api/download') and record.mimetype.value and record.mimetype.value.indexOf('image/') === 0) ? (record.url_preview_image.raw_value || record.url.raw_value) : ('/documents/image/' + record.id.raw_value + '?field=thumbnail&amp;unique=' + (record.checksum.value ? record.checksum.value.slice(-8) : ''))</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

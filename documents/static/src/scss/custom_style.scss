@@ -1,0 +1,7 @@
+.o_documents_kanban_view .o_content .o_kanban_renderer .o_kanban_record {
+    min-height: unset !important;
+}
+
+.o_kanban_renderer .o_kanban_record > div:not(.o_dropdown_kanban), .o_kanban_renderer .o_kanban_quick_create {
+    border: unset !important;
+}

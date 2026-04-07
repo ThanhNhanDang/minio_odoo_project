@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="documents_minio_sync.MinioBrowserDialog">
+        <Dialog title="'Import from MinIO'" size="'lg'">
+            <div class="minio-browser">
+                <!-- Path navigation -->
+                <div class="d-flex align-items-center mb-3">
+                    <button class="btn btn-sm btn-secondary me-2" 
+                            t-on-click="goUp"
+                            t-att-disabled="!state.currentPath">
+                        <i class="fa fa-arrow-up"/> Up
+                    </button>
+                    <div class="flex-grow-1">
+                        <strong>Path:</strong> /<t t-esc="state.currentPath"/>
+                    </div>
+                </div>
+
+                <!-- Loading spinner -->
+                <div t-if="state.loading" class="text-center p-5">
+                    <i class="fa fa-spinner fa-spin fa-3x"/>
+                </div>
+
+                <!-- File list -->
+                <div t-else="" class="minio-file-list" style="max-height: 400px; overflow-y: auto;">
+                    <!-- Folders -->
+                    <div t-foreach="state.folders" t-as="folder" t-key="folder.path"
+                         class="d-flex align-items-center p-2 border-bottom minio-item"
+                         t-att-class="state.selectedItems[folder.path] ? 'bg-primary bg-opacity-10' : ''"
+                         style="cursor: pointer;">
+                        <input type="checkbox" 
+                               class="form-check-input me-3"
+                               t-att-checked="state.selectedItems[folder.path]"
+                               t-on-click.stop="() => this.onItemToggle(folder)"/>
+                        <div class="d-flex align-items-center flex-grow-1" t-on-click="() => this.onFolderClick(folder)">
+                            <i class="fa fa-folder text-warning fa-2x me-3"/>
+                            <div>
+                                <strong t-esc="folder.name"/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Files -->
+                    <div t-foreach="state.files" t-as="file" t-key="file.path"
+                         class="d-flex align-items-center p-2 border-bottom minio-item"
+                         t-att-class="state.selectedItems[file.path] ? 'bg-primary bg-opacity-10' : ''"
+                         style="cursor: pointer;"
+                         t-on-click="() => this.onItemToggle(file)">
+                        <input type="checkbox"
+                               class="form-check-input me-3"
+                               t-att-checked="state.selectedItems[file.path]"
+                               t-on-click.stop="() => this.onItemToggle(file)"/>
+                        <t t-if="isImage(file)">
+                            <img t-att-src="getThumbnailUrl(file)"
+                                 class="me-3 rounded" style="width:40px;height:40px;object-fit:cover;"
+                                 loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display=''"/>
+                            <i class="fa fa-file-image-o fa-2x me-3" style="display:none"/>
+                        </t>
+                        <t t-elif="isVideo(file)">
+                            <img t-att-src="getVideoThumbnailUrl(file)"
+                                 class="me-3 rounded" style="width:40px;height:40px;object-fit:cover;"
+                                 loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display=''"/>
+                            <i class="fa fa-file-video-o fa-2x me-3" style="display:none"/>
+                        </t>
+                        <t t-else="">
+                            <i t-att-class="getFileIcon(file) + ' fa-2x me-3'"/>
+                        </t>
+                        <div class="flex-grow-1">
+                            <div><strong t-esc="file.name"/></div>
+                            <small class="text-muted">
+                                <t t-esc="formatSize(file.size)"/>
+                                <t t-if="file.last_modified"> - <t t-esc="file.last_modified"/></t>
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- Empty state -->
+                    <div t-if="!state.folders.length and !state.files.length" 
+                         class="text-center text-muted p-5">
+                        <i class="fa fa-folder-open fa-3x mb-3"/>
+                        <div>No files or folders found</div>
+                    </div>
+                </div>
+
+                <!-- Selected count + options -->
+                <div class="mt-3 d-flex align-items-center justify-content-between">
+                    <div>
+                        <strong>Selected:</strong> <t t-esc="selectedCount"/> item(s)
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="deleteAfterImport"
+                               t-att-checked="state.deleteAfterImport"
+                               t-on-change="onToggleDeleteAfterImport"/>
+                        <label class="form-check-label text-danger" for="deleteAfterImport">
+                            <i class="fa fa-trash"/> Delete from MinIO after import
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <t t-set-slot="footer">
+                <button class="btn btn-secondary" t-on-click="props.close">
+                    Cancel
+                </button>
+                <button class="btn btn-danger me-2"
+                        t-on-click="onDeleteSelected"
+                        t-att-disabled="selectedCount === 0 or state.loading">
+                    <i class="fa fa-trash"/> Delete Selected
+                </button>
+                <button class="btn btn-outline-primary me-2" 
+                        t-on-click="onDownloadZip"
+                        t-att-disabled="selectedCount === 0 or state.loading">
+                    <i class="fa fa-file-archive-o"/> Download as Zip
+                </button>
+                <button class="btn btn-primary" 
+                        t-on-click="onImport"
+                        t-att-disabled="selectedCount === 0 or state.loading">
+                    <i class="fa fa-download"/> Import Selected
+                </button>
+            </t>
+        </Dialog>
+    </t>
+</templates>

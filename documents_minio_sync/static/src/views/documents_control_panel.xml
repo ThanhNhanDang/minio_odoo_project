@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="documents_minio_sync.ControlPanel.Buttons" t-inherit="documents.DocumentsViews.ControlPanel" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('btn-group')]" position="after">
+            <div class="btn-group ms-2">
+                <button type="button" 
+                        class="btn btn-primary dropdown-toggle"
+                        data-bs-toggle="dropdown" 
+                        aria-expanded="false"
+                        data-hotkey="m">
+                    <i class="fa fa-cloud"/> MinIO Options
+                    <span t-if="this.minioState and this.minioState.tasks.filter(t => t.status === 'running').length > 0" 
+                          class="badge rounded-pill bg-warning text-dark ms-1">
+                        <t t-esc="this.minioState.tasks.filter(t => t.status === 'running').length"/>
+                    </span>
+                </button>
+                
+                <ul class="dropdown-menu" style="min-width: 250px;">
+                    <li>
+                        <button type="button" 
+                                class="btn btn-link dropdown-item"
+                                title="Upload File from Client" 
+                                t-on-click.stop.prevent="() => this.onClickMinioPickFile()">
+                            <i class="fa fa-upload me-2"/> Upload File
+                        </button>
+                    </li>
+                    <li>
+                        <button type="button" 
+                                class="btn btn-link dropdown-item"
+                                title="Upload Folder from Client" 
+                                t-on-click.stop.prevent="() => this.onClickMinioPickFolder()">
+                            <i class="fa fa-folder-open me-2"/> Upload Folder
+                        </button>
+                    </li>
+                    <li>
+                        <button type="button" 
+                                class="btn btn-link dropdown-item"
+                                title="Browse and Import from MinIO" 
+                                t-on-click.stop.prevent="() => this.onClickBrowseMinIO()">
+                            <i class="fa fa-cloud-download me-2"/> Import from MinIO
+                        </button>
+                    </li>
+                    
+                    <t t-if="this.minioState and this.minioState.tasks.length > 0">
+                        <li><hr class="dropdown-divider"/></li>
+                        <li><h6 class="dropdown-header">Active Tasks</h6></li>
+                        <t t-foreach="this.minioState.tasks" t-as="task" t-key="task.id">
+                            <li class="px-3 py-1">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex flex-column" style="overflow: hidden; flex: 1;">
+                                        <span class="text-truncate fw-bold" style="max-width: 180px;" t-esc="task.name"/>
+                                        <small class="text-muted" t-esc="task.info"/>
+                                        <div t-if="task.status === 'running' and task.percent !== undefined" class="progress mt-1" style="height: 4px;">
+                                            <div class="progress-bar" role="progressbar" t-att-style="'width: ' + task.percent + '%'" t-att-aria-valuenow="task.percent" aria-valuemin="0" aria-valuemax="100"/>
+                                        </div>
+                                    </div>
+                                    <div class="ms-2">
+                                        <button t-if="task.status === 'running' and task.externalId" 
+                                                class="btn btn-sm btn-link text-danger p-0 me-2"
+                                                title="Cancel Task"
+                                                t-on-click.stop.prevent="() => this.onClickCancelTask(task.externalId)">
+                                            <i class="fa fa-stop-circle"/>
+                                        </button>
+                                        <span t-if="task.status === 'running'" class="spinner-border spinner-border-sm text-primary"/>
+                                        <i t-elif="task.status === 'success'" 
+                                           class="fa fa-check text-success"
+                                           style="cursor: pointer;"
+                                           title="Dismiss"
+                                           t-on-click.stop.prevent="() => this.onClickRemoveTask(task.id)"/>
+                                        <i t-elif="task.status === 'failed'" 
+                                           class="fa fa-times text-danger"
+                                           style="cursor: pointer;"
+                                           title="Dismiss"
+                                           t-on-click.stop.prevent="() => this.onClickRemoveTask(task.id)"/>
+                                    </div>
+                                </div>
+                            </li>
+                        </t>
+                         <li><hr class="dropdown-divider"/></li>
+                         <li>
+                            <button class="dropdown-item text-center text-muted small" t-on-click.stop.prevent="() => this.onClickClearCompletedTasks()">
+                                Clear Completed
+                            </button>
+                         </li>
+                    </t>
+                </ul>
+            </div>
+            <!-- Hidden inputs for fast picking -->
+            <input type="file" multiple="1" id="minio_file_input" t-ref="minioFileInput" class="d-none" t-on-change="onMinioFileSelected"/>
+            <input type="file" webkitdirectory="1" id="minio_folder_input" t-ref="minioFolderInput" class="d-none" t-on-change="onMinioFolderSelected"/>
+        </xpath>
+    </t>
+</templates>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="document_view_list_inherit_view_button" model="ir.ui.view">
+        <field name="name">documents.document.list.inherit.view.button</field>
+        <field name="model">documents.document</field>
+        <field name="inherit_id" ref="documents.documents_view_list"/>
+        <field name="arch" type="xml">
+            <xpath expr="//tree" position="inside">
+                <field name="url" invisible="1"/>
+                <field name="attachment_id" invisible="1"/>
+            </xpath>
+            <xpath expr="//field[@name='name']" position="after">
+                <button type="object" name="action_view_preview"
+                        class="btn btn-primary o_minio_view_preview" 
+                        icon="fa-eye"
+                        string="View"
+                        invisible="not attachment_id and not url"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

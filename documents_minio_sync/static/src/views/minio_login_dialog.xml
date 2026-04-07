@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="documents_minio_sync.MinioLoginDialog">
+        <Dialog title="'MinIO Service Authentication'" size="'md'">
+            <div class="p-3">
+                <div class="alert alert-info shadow-sm mb-3">
+                    <div class="d-flex align-items-center">
+                        <i class="fa fa-info-circle fa-2x me-3 text-info"/>
+                        <div>
+                            <strong>MinIO Service Authentication</strong><br/>
+                            Please log in to the MinIO Tray App using your server credentials to enable file synchronization.
+                        </div>
+                    </div>
+                </div>
+
+                <div t-if="state.error" class="alert alert-danger" role="alert">
+                    <i class="fa fa-exclamation-triangle me-2"/>
+                    <t t-esc="state.error"/>
+                </div>
+
+                <!-- <div class="mb-3">
+                    <label for="minio_login_url" class="form-label">Odoo URL</label>
+                    <input type="text" class="form-control bg-light" id="minio_login_url" 
+                           t-model="state.url" 
+                           placeholder="https://your-odoo-url.com"
+                           disabled="1"/>
+                </div>
+
+                <div class="mb-3">
+                    <label for="minio_login_db" class="form-label">Database</label>
+                    <input type="text" class="form-control bg-light" id="minio_login_db" 
+                           t-model="state.db" 
+                           placeholder="odoo-db"
+                           disabled="1"/>
+                </div> -->
+
+                <div class="mb-3">
+                    <label for="minio_login_user" class="form-label">Email / Login</label>
+                    <input type="text" class="form-control" id="minio_login_user" 
+                           t-model="state.username" 
+                           placeholder="admin@example.com"
+                           t-att-disabled="state.loading"/>
+                </div>
+
+                <div class="mb-3">
+                    <label for="minio_login_pass" class="form-label">Password</label>
+                    <input type="password" class="form-control" id="minio_login_pass" 
+                           t-model="state.password" 
+                           placeholder="********"
+                           t-att-disabled="state.loading"/>
+                </div>
+            </div>
+
+            <t t-set-slot="footer">
+                <button class="btn btn-primary" t-on-click="onLogin" t-att-disabled="state.loading">
+                    <t t-if="state.loading">
+                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        Logging in...
+                    </t>
+                    <t t-else="">
+                        Login
+                    </t>
+                </button>
+                <button class="btn btn-secondary" t-on-click="props.close" t-att-disabled="state.loading">
+                    Cancel
+                </button>
+            </t>
+        </Dialog>
+    </t>
+</templates>

@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- MinIO Configuration Form View -->
+    <record id="view_minio_config_form" model="ir.ui.view">
+        <field name="name">minio.config.form</field>
+        <field name="model">minio.config</field>
+        <field name="arch" type="xml">
+            <form string="MinIO Configuration">
+                <header>
+                    <button name="action_test_connection" 
+                            string="Test Connection" 
+                            type="object" 
+                            class="oe_highlight"
+                            icon="fa-plug"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="toggle_active" 
+                                type="object" 
+                                class="oe_stat_button" 
+                                icon="fa-archive">
+                            <field name="active" widget="boolean_button" 
+                                   options='{"terminology": "archive"}'/>
+                        </button>
+                    </div>
+                    
+                    <widget name="web_ribbon" title="Default" 
+                            invisible="not is_default"/>
+                    
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Production MinIO Server"/>
+                        </h1>
+                    </div>
+
+                    <group>
+                        <group string="Server Configuration">
+                            <field name="endpoint" placeholder="localhost:9000"/>
+                            <field name="backend_endpoint" placeholder="http://192.168.x.x:9000 (Optional)"/>
+                            <field name="bucket_name" placeholder="odoo-documents"/>
+                            <field name="is_default" widget="boolean_toggle"/>
+                        </group>
+                        <group string="Authentication">
+                            <field name="access_key" password="True"/>
+                            <field name="secret_key" password="True"/>
+                        </group>
+                    </group>
+
+                    <group string="Client Service Configuration">
+                        <field name="client_service_url" 
+                               placeholder="http://localhost:9999"
+                               help="URL of the local MinIO upload service running on client machines"/>
+                    </group>
+
+                    <notebook>
+                        <page string="Connection Info" name="info">
+                            <group>
+                                <group>
+                                    <label for="endpoint" string="MinIO Storage Endpoint"/>
+                                    <div>
+                                        <field name="endpoint" readonly="1" nolabel="1" class="oe_inline"/>
+                                    </div>
+                                </group>
+                                <group>
+                                    <field name="bucket_name" readonly="1"/>
+                                </group>
+                            </group>
+                            
+                            <div class="alert alert-info" role="alert">
+                                <h4 class="alert-heading">
+                                    <i class="fa fa-info-circle"/> Configuration Guide
+                                </h4>
+                                <ul>
+                                    <li><strong>Endpoint:</strong> Public MinIO server address for clients (e.g., minio.autonsi.cloud)</li>
+                                    <li><strong>Backend Endpoint:</strong> (Optional) Internal address for Odoo server connection (e.g. http://192.168.5.197:9500)</li>
+                                    <li><strong>Access Key &amp; Secret Key:</strong> MinIO credentials (like AWS access keys)</li>
+                                    <li><strong>Bucket Name:</strong> Storage bucket for Odoo documents</li>
+                                    <li><strong>Client Service URL:</strong> Local service endpoint for uploading files from client machines</li>
+                                </ul>
+                            </div>
+                        </page>
+                        
+                        <page string="Usage Instructions" name="instructions">
+                            <div class="container">
+                                <h3>How to Use MinIO Sync</h3>
+                                
+                                <div class="row mt-3">
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header bg-primary text-white">
+                                                <i class="fa fa-upload"/> Upload from Client
+                                            </div>
+                                            <div class="card-body">
+                                                <ol>
+                                                    <li>Ensure MinIO client service is running on your machine</li>
+                                                    <li>Navigate to Documents module</li>
+                                                    <li>Select a workspace/folder</li>
+                                                    <li>Click <strong>"Upload File"</strong> or <strong>"Upload Folder"</strong></li>
+                                                    <li>Choose files/folders from your local machine</li>
+                                                    <li>Files will be uploaded to MinIO and synced to Odoo</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-header bg-success text-white">
+                                                <i class="fa fa-cloud-download"/> Import from MinIO
+                                            </div>
+                                            <div class="card-body">
+                                                <ol>
+                                                    <li>Navigate to Documents module</li>
+                                                    <li>Select a workspace/folder</li>
+                                                    <li>Click <strong>"Import from MinIO"</strong></li>
+                                                    <li>Browse files in MinIO bucket</li>
+                                                    <li>Select files to import</li>
+                                                    <li>Click "Import Selected"</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="alert alert-warning mt-4" role="alert">
+                                    <h5><i class="fa fa-exclamation-triangle"/> Prerequisites</h5>
+                                    <ul class="mb-0">
+                                        <li>MinIO server must be running and accessible</li>
+                                        <li>For client uploads: MinIO client service must be installed and running</li>
+                                        <li>Correct credentials (Access Key &amp; Secret Key) must be configured</li>
+                                        <li>Network connectivity to MinIO server</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- MinIO Configuration Tree View -->
+    <record id="view_minio_config_tree" model="ir.ui.view">
+        <field name="name">minio.config.tree</field>
+        <field name="model">minio.config</field>
+        <field name="arch" type="xml">
+            <tree string="MinIO Configurations">
+                <field name="name"/>
+                <field name="endpoint"/>
+                <field name="bucket_name"/>
+                <field name="is_default" widget="boolean_toggle"/>
+                <field name="active" widget="boolean_toggle"/>
+                <button name="action_test_connection" 
+                        type="object" 
+                        icon="fa-plug" 
+                        title="Test Connection"
+                        class="btn-secondary"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- MinIO Configuration Search View -->
+    <record id="view_minio_config_search" model="ir.ui.view">
+        <field name="name">minio.config.search</field>
+        <field name="model">minio.config</field>
+        <field name="arch" type="xml">
+            <search string="Search MinIO Configurations">
+                <field name="name" string="Configuration"/>
+                <field name="endpoint"/>
+                <field name="bucket_name"/>
+                <filter name="default" string="Default" domain="[('is_default', '=', True)]"/>
+                <filter name="active" string="Active" domain="[('active', '=', True)]"/>
+                <filter name="inactive" string="Archived" domain="[('active', '=', False)]"/>
+                <group expand="0" string="Group By">
+                    <filter name="group_by_endpoint" string="Endpoint" context="{'group_by': 'endpoint'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- MinIO Configuration Action -->
+    <record id="action_minio_config" model="ir.actions.act_window">
+        <field name="name">MinIO Configuration</field>
+        <field name="res_model">minio.config</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first MinIO configuration
+            </p>
+            <p>
+                Configure connection to your MinIO server to enable document synchronization.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Items -->
+    <menuitem id="menu_minio_root"
+              name="MinIO Sync"
+              parent="documents.menu_root"
+              sequence="100"/>
+
+    <menuitem id="menu_minio_config"
+              name="Configuration"
+              parent="menu_minio_root"
+              action="action_minio_config"
+              sequence="10"
+              groups="documents.group_documents_manager"/>
+
+</odoo>

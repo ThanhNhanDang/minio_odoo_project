@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates>
+    <!-- Add download progress indicator to inspector -->
+    <t t-name="documents.DocumentsInspector" t-inherit="documents.DocumentsInspector" t-inherit-mode="extension">
+        <xpath expr="//div[@class='o_documents_inspector_info']" position="before">
+            <div t-if="Object.keys(downloadProgress.downloads).length" class="o_download_progress_container p-2">
+                <t t-foreach="Object.values(downloadProgress.downloads)" t-as="download" t-key="download.id">
+                    <DownloadProgressBar download="download"/>
+                </t>
+            </div>
+        </xpath>
+    </t>
+</templates>

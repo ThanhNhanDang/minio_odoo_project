@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Demo MinIO Configuration -->
+        <record id="minio_config_demo" model="minio.config">
+            <field name="name">MinIO Server</field>
+            <field name="endpoint">https://minio.autonsi.cloud</field>
+            <field name="access_key">minioadmin</field>
+            <field name="secret_key">minioadmin</field>
+            <field name="bucket_name">autonsi-documents</field>
+            <field name="is_default" eval="True"/>
+            <field name="client_service_url">http://localhost:9999</field>
+        </record>
+    </data>
+</odoo>

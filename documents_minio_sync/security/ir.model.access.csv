@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_minio_config_manager,minio.config.manager,model_minio_config,documents.group_documents_manager,1,1,1,1
+access_minio_config_user,minio.config.user,model_minio_config,documents.group_documents_user,1,0,0,0
+access_documents_document_minio,documents.document.minio,documents.model_documents_document,documents.group_documents_user,1,1,1,1
+access_minio_device_manager,minio.device.manager,model_minio_device,documents.group_documents_manager,1,1,1,1
+access_minio_service_log_user,minio.service.log.user,model_minio_service_log,documents.group_documents_user,1,1,1,0
+access_minio_access_log_user,minio.access.log.user,model_minio_access_log,documents.group_documents_user,1,1,1,0

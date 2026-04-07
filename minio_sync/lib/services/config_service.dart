@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_config.dart';
 import '../models/minio_config.dart';

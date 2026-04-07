@@ -6,8 +6,18 @@ import 'package:shelf_cors_headers/shelf_cors_headers.dart';
 import 'handlers/upload_handler.dart';
 import 'handlers/task_handler.dart';
 import 'handlers/auth_handler.dart';
-import '../../services/upload_queue.dart';
-import '../../services/minio_service.dart';
+import 'handlers/config_handler.dart';
+import 'handlers/system_handler.dart';
+import 'handlers/progress_handler.dart';
+import 'handlers/pick_handler.dart';
+import 'handlers/file_handler.dart';
+import 'handlers/update_handler.dart';
+import '../services/upload_queue.dart';
+import '../services/minio_service.dart';
+import '../services/updater_service.dart';
+import '../models/app_config.dart';
+import '../models/minio_config.dart';
+import '../utils/logger.dart';
 
 class ServerConfig {
   final int port;
@@ -17,28 +27,79 @@ class ServerConfig {
 }
 
 void startApiServer(ServerConfig config) async {
-  final uploadQueue = UploadQueue(MinioService());
-  
-  final router = Router();
-  
+  final minioService = MinioService();
+  final uploadQueue = UploadQueue(minioService);
+
+  // Shared mutable state for config (updated by config_handler)
+  final configHandler = ConfigHandler(minioService, AppConfig(), MinioConfig());
+
+  // Initialize updater from config
+  final appConfig = configHandler.appConfig;
+  UpdaterService? updater;
+  if (appConfig.updateUrl.isNotEmpty) {
+    updater = UpdaterService(
+      currentVersion: appConfig.version,
+      repoSlug: appConfig.updateUrl,
+      githubToken: appConfig.githubToken.isNotEmpty ? appConfig.githubToken : null,
+    );
+    appLogger.i('Updater initialized: repo=${appConfig.updateUrl}');
+
+    // Start background update check (30s initial, 6h recurring)
+    updater.startBackgroundCheck((info) {
+      appLogger.i('Update available: ${appConfig.version} -> ${info.version}');
+    });
+  }
+
+  final authHandler = AuthHandler(() => configHandler.appConfig);
+  final systemHandler = SystemHandler(minioService, () => configHandler.appConfig);
   final uploadHandler = UploadHandler(uploadQueue);
   final taskHandler = TaskHandler(uploadQueue);
-  final authHandler = AuthHandler();
+  final progressHandler = ProgressHandler(uploadQueue);
+  final pickHandler = PickHandler(uploadQueue);
+  final fileHandler = FileHandler(minioService);
+  final updateHandler = UpdateHandler(updater, appConfig.version);
 
+  final router = Router();
+
+  // Upload & progress
   router.post('/api/upload', uploadHandler.handleUpload);
+  router.get('/api/upload/progress/<id>', progressHandler.handleProgress);
+
+  // Tasks
   router.get('/api/tasks', taskHandler.handleListTasks);
   router.get('/api/task/<id>', taskHandler.handleGetTask);
+  router.delete('/api/task/<id>', taskHandler.handleDeleteTask);
+  router.post('/api/task/<id>/cancel', taskHandler.handleCancelTask);
+
+  // Auth
   router.post('/api/auth/login', authHandler.handleLogin);
+  router.post('/api/auth/logout', authHandler.handleLogout);
+  router.get('/api/auth/status', authHandler.handleStatus);
+
+  // Config & System
+  router.post('/api/config/auto_set', configHandler.handleAutoSet);
+  router.get('/api/config', configHandler.handleGetConfig);
+  router.get('/api/system/status', systemHandler.handleStatus);
+  router.get('/api/system/update_check', updateHandler.handleUpdateCheck);
+  router.post('/api/system/update', updateHandler.handleUpdate);
+
+  // File operations
+  router.get('/api/list', fileHandler.handleList);
+  router.post('/api/delete', fileHandler.handleDelete);
+  router.post('/api/download_async', fileHandler.handleDownloadAsync);
+
+  // Pick sync (native file dialog)
+  router.post('/api/pick_sync', pickHandler.handlePickSync);
 
   final handler = const Pipeline()
       .addMiddleware(corsHeaders(headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Origin, Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Origin, Content-Type, Authorization, X-Requested-With',
       }))
       .addMiddleware(logRequests())
       .addHandler(router.call);
 
-  var server = await io.serve(handler, '127.0.0.1', config.port);
+  final server = await io.serve(handler, '127.0.0.1', config.port);
   print('Server listening on port ${server.port} in separate Isolate');
 }

@@ -5,6 +5,8 @@ class AppConfig {
   final String listenAddr;
   final String hostname;
   final String version;
+  final String updateUrl;
+  final String githubToken;
 
   AppConfig({
     this.odooUrl = '',
@@ -13,6 +15,8 @@ class AppConfig {
     this.listenAddr = ':9999',
     this.hostname = 'MobileClient',
     this.version = '1.0.0',
+    this.updateUrl = 'ThanhNhanDang/minio_odoo_project',
+    this.githubToken = '',
   });
 
   factory AppConfig.fromJson(Map<String, dynamic> json) {
@@ -23,6 +27,8 @@ class AppConfig {
       listenAddr: json['listen_addr'] ?? ':9999',
       hostname: json['hostname'] ?? 'MobileClient',
       version: json['version'] ?? '1.0.0',
+      updateUrl: json['update_url'] ?? 'ThanhNhanDang/minio_odoo_project',
+      githubToken: json['github_token'] ?? '',
     );
   }
 
@@ -34,6 +40,8 @@ class AppConfig {
       'listen_addr': listenAddr,
       'hostname': hostname,
       'version': version,
+      'update_url': updateUrl,
+      'github_token': githubToken,
     };
   }
 
@@ -44,6 +52,8 @@ class AppConfig {
     String? listenAddr,
     String? hostname,
     String? version,
+    String? updateUrl,
+    String? githubToken,
   }) {
     return AppConfig(
       odooUrl: odooUrl ?? this.odooUrl,
@@ -52,6 +62,8 @@ class AppConfig {
       listenAddr: listenAddr ?? this.listenAddr,
       hostname: hostname ?? this.hostname,
       version: version ?? this.version,
+      updateUrl: updateUrl ?? this.updateUrl,
+      githubToken: githubToken ?? this.githubToken,
     );
   }
 }

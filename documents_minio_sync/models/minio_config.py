@@ -73,11 +73,16 @@ class MinioConfig(models.Model):
         )
 
     def get_bucket_for_domain(self):
-        """Return bucket name derived from the current HTTP domain.
+        """Return bucket name.
+        If bucket_name is explicitly configured, always use it.
+        Otherwise derive from the current HTTP domain:
         e.g. erp.company.com → erp-company-com-documents
-             erp.company.com:8069 → erp-company-com-documents
-        Falls back to self.bucket_name if no request context available.
+        Falls back to 'odoo-documents' if nothing available.
         """
+        # If bucket_name is explicitly set in config, use it directly
+        if self.bucket_name and self.bucket_name.strip():
+            return self.bucket_name.strip()
+        # Auto-derive from domain only when no explicit bucket configured
         try:
             from odoo.http import request
             if request and request.httprequest:
@@ -86,7 +91,7 @@ class MinioConfig(models.Model):
                 return f"{sanitized}-documents"
         except Exception:
             pass
-        return (self.bucket_name or 'odoo-documents').strip()
+        return 'odoo-documents'
 
     def ensure_bucket(self, client=None, bucket=None):
         """Create the bucket if it does not exist. Returns bucket name."""

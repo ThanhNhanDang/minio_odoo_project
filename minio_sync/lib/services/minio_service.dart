@@ -79,6 +79,29 @@ class MinioService {
     }
   }
 
+  Future<void> deleteObject(String path, {bool recursive = false}) async {
+    if (_minio == null || _bucket == null) {
+      throw Exception('MinIO not connected');
+    }
+
+    if (recursive) {
+      // Delete all objects under this prefix
+      final prefix = path.endsWith('/') ? path : '$path/';
+      final objects = await _minio!.listObjectsV2(_bucket!, prefix: prefix, recursive: true).toList();
+      for (var page in objects) {
+        for (var obj in page.objects) {
+          if (obj.key != null) {
+            await _minio!.removeObject(_bucket!, obj.key!);
+          }
+        }
+      }
+      appLogger.i('Deleted folder: $prefix');
+    } else {
+      await _minio!.removeObject(_bucket!, path);
+      appLogger.i('Deleted object: $path');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> listObjects(String prefix) async {
     if (_minio == null || _bucket == null) return [];
     

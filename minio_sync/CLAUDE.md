@@ -105,3 +105,5 @@ Two config models: `AppConfig` (Odoo URL, DB, client ID, listen address) and `Mi
 This Flutter app replaces/complements the Go service at `../service/`. Both serve the same purpose (local HTTP API for upload operations), but this Flutter version targets cross-platform (desktop + mobile) while the Go version is desktop-only with system tray.
 
 The Odoo module at `../documents_minio_sync/` calls `localhost:9999` API endpoints from its JavaScript frontend to trigger uploads and track progress.
+
+

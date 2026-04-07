@@ -61,12 +61,14 @@ class UploadQueue {
     _isProcessing = false;
   }
 
+  bool removeTask(String id) {
+    return _activeTasks.remove(id) != null;
+  }
+
   void cancelTask(String id) {
     final task = _activeTasks[id];
-    if (task != null && task.status == UploadStatus.uploading) {
+    if (task != null && task.status != UploadStatus.done && task.status != UploadStatus.error) {
       task.updateProgress(task.percentCompleted, UploadStatus.canceled, info: 'Canceled by user');
-      // In minio_new, cancelation works by interrupting the stream, implemented in minioService logic. 
-      // For basic purposes setting state is enough to skip further actions
     }
   }
 }

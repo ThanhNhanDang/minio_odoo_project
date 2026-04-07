@@ -14,11 +14,9 @@ class SystemTrayManager with TrayListener {
     appLogger.i('Initializing Tray Manager');
     trayManager.addListener(this);
     
-    // Use a placeholder icon for now (needs proper .ico or .png depending on platform)
-    // You will need to put app_icon.ico in assets and configure pubspec
-    // await trayManager.setIcon(Platform.isWindows ? 'assets/app_icon.ico' : 'assets/app_icon.png');
-    
-    // Fallback: Tooltip
+    await trayManager.setIcon(
+      Platform.isWindows ? 'assets/app_icon.ico' : 'assets/app_icon.png',
+    );
     await trayManager.setToolTip('Odoo MinIO Sync');
   }
 

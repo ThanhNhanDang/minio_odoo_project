@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:isolate';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
@@ -26,12 +28,38 @@ class ServerConfig {
   ServerConfig(this.port, this.sendPort);
 }
 
+Future<Map<String, dynamic>> _loadConfigFromDisk() async {
+  try {
+    final exePath = Platform.resolvedExecutable;
+    final configPath = '${File(exePath).parent.path}/config.json';
+    final file = File(configPath);
+    if (await file.exists()) {
+      return jsonDecode(await file.readAsString());
+    }
+  } catch (e) {
+    appLogger.e('Failed to load config.json in isolate', error: e);
+  }
+  return {};
+}
+
 void startApiServer(ServerConfig config) async {
   final minioService = MinioService();
   final uploadQueue = UploadQueue(minioService);
 
-  // Shared mutable state for config (updated by config_handler)
-  final configHandler = ConfigHandler(minioService, AppConfig(), MinioConfig());
+  // Load persisted config from disk
+  final diskConfig = await _loadConfigFromDisk();
+  final initialAppConfig = AppConfig.fromJson(diskConfig);
+  final initialMinioConfig = MinioConfig.fromJson(diskConfig);
+
+  appLogger.i('Server config loaded: endpoint=${initialMinioConfig.endpoint}, updateUrl=${initialAppConfig.updateUrl}');
+
+  // Auto-connect MinIO if config was persisted from a previous session
+  if (initialMinioConfig.endpoint.isNotEmpty) {
+    minioService.connect(initialMinioConfig);
+    appLogger.i('Auto-connected MinIO from persisted config');
+  }
+
+  final configHandler = ConfigHandler(minioService, initialAppConfig, initialMinioConfig);
 
   // Initialize updater from config
   final appConfig = configHandler.appConfig;

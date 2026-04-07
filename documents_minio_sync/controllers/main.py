@@ -133,7 +133,7 @@ class MinioConfigController(http.Controller):
                     })
             # ---------------------------
 
-            bucket = config.get_bucket_for_domain()
+            bucket = config.get_bucket()
             return {
                 'status': 'success',
                 'data': {
@@ -380,7 +380,7 @@ class MinioConfigController(http.Controller):
                 return request.make_response(json.dumps({"error": "No configuration found"}), [('Content-Type', 'application/json')])
             config = request.env['minio.config'].browse(config_id)
             data = {
-                "bucket": config.get_bucket_for_domain(),
+                "bucket": config.get_bucket(),
                 "alias": config.name
             }
             return request.make_response(json.dumps(data), [('Content-Type', 'application/json')])
@@ -622,7 +622,7 @@ class MinioConfigController(http.Controller):
             config_id = request.env['minio.config'].get_default_config()
             config = request.env['minio.config'].browse(config_id)
             client = config.get_minio_client()
-            bucket = config.get_bucket_for_domain()
+            bucket = config.get_bucket()
 
             if is_folder:
                 # MinIO Python client doesn't have recursive delete like 'mc rm'.
@@ -654,7 +654,7 @@ class MinioConfigController(http.Controller):
             config_id = request.env['minio.config'].get_default_config()
             config = request.env['minio.config'].browse(config_id)
             client = config.get_minio_client()
-            bucket = config.get_bucket_for_domain()
+            bucket = config.get_bucket()
 
             in_memory_zip = io.BytesIO()
             with zipfile.ZipFile(in_memory_zip, 'w', zipfile.ZIP_DEFLATED) as zf:

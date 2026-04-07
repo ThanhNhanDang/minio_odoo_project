@@ -72,26 +72,10 @@ class MinioConfig(models.Model):
             region='us-east-1',  # Thêm region
         )
 
-    def get_bucket_for_domain(self):
-        """Return bucket name.
-        If bucket_name is explicitly configured, always use it.
-        Otherwise derive from the current HTTP domain:
-        e.g. erp.company.com → erp-company-com-documents
-        Falls back to 'odoo-documents' if nothing available.
-        """
-        # If bucket_name is explicitly set in config, use it directly
-        if self.bucket_name and self.bucket_name.strip():
-            return self.bucket_name.strip()
-        # Auto-derive from domain only when no explicit bucket configured
-        try:
-            from odoo.http import request
-            if request and request.httprequest:
-                host = request.httprequest.host.split(':')[0]  # strip port
-                sanitized = host.replace('.', '-').lower()
-                return f"{sanitized}-documents"
-        except Exception:
-            pass
-        return 'odoo-documents'
+    def get_bucket(self):
+        """Return bucket name from config. Falls back to 'odoo-documents'."""
+        self.ensure_one()
+        return (self.bucket_name or 'odoo-documents').strip()
 
     def ensure_bucket(self, client=None, bucket=None):
         """Create the bucket if it does not exist. Returns bucket name."""
@@ -99,7 +83,7 @@ class MinioConfig(models.Model):
         if client is None:
             client = self.get_minio_client()
         if bucket is None:
-            bucket = self.get_bucket_for_domain()
+            bucket = self.get_bucket()
         if not client.bucket_exists(bucket):
             client.make_bucket(bucket)
             _logger.info("Auto-created bucket: %s", bucket)
@@ -111,7 +95,7 @@ class MinioConfig(models.Model):
         """
         self.ensure_one()
         try:
-            bucket = self.get_bucket_for_domain()
+            bucket = self.get_bucket()
             _logger.info("Testing MinIO connection for %s on bucket %s", self.name, bucket)
             client = self.get_minio_client()
             # Try to check if bucket exists

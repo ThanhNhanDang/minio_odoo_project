@@ -129,7 +129,7 @@ class DocumentsDocument(models.Model):
                 if config_id:
                     config = self.env['minio.config'].browse(config_id)
                     client = config.get_minio_client()
-                    bucket = config.get_bucket_for_domain()
+                    bucket = config.get_bucket()
                     for path in minio_paths:
                         try:
                             client.remove_object(bucket, path)
@@ -206,7 +206,7 @@ class DocumentsDocument(models.Model):
         
         config = self.env['minio.config'].browse(config_id)
         client = config.get_minio_client()
-        bucket = config.get_bucket_for_domain()
+        bucket = config.get_bucket()
 
         try:
             # Get object returns a stream (urllib3.response.HTTPResponse)

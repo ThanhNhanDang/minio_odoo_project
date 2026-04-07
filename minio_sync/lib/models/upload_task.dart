@@ -21,11 +21,13 @@ class UploadTask {
   final String remotePath;
   final int? odooFolderId;
   final String type; // 'file' or 'folder'
-  
+  final String odooSession; // Odoo session cookie for metadata sync
+
   UploadStatus status;
   String errorText;
   double percentCompleted;
-  
+  List<String> uploadedPaths; // MinIO object keys of uploaded files
+
   final StreamController<UploadProgress> progressController;
 
   UploadTask({
@@ -35,10 +37,12 @@ class UploadTask {
     required this.remotePath,
     this.odooFolderId,
     this.type = 'file',
+    this.odooSession = '',
     this.status = UploadStatus.pending,
     this.errorText = '',
     this.percentCompleted = 0.0,
-  }) : progressController = StreamController<UploadProgress>.broadcast();
+  }) : progressController = StreamController<UploadProgress>.broadcast(),
+       uploadedPaths = [];
 
   void updateProgress(double percent, UploadStatus state, {String info = ''}) {
     percentCompleted = percent;
@@ -63,6 +67,7 @@ class UploadTask {
       'status': status.name,
       'error': errorText,
       'percent': percentCompleted,
+      'uploaded_paths': uploadedPaths,
     };
   }
 }

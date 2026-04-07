@@ -69,7 +69,6 @@ class MinioConfig(models.Model):
             access_key=access_key,
             secret_key=secret_key,
             secure=secure,
-            region='us-east-1',  # Thêm region
         )
 
     def get_bucket(self):

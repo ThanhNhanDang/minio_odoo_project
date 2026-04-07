@@ -34,7 +34,7 @@ class ConfigHandler {
       appLogger.i('Config auto_set: endpoint=${minioConfig.endpoint}, bucket=${minioConfig.bucket}');
 
       // Persist config to disk so UI and restarts pick it up
-      await _persistConfig();
+      await persistConfig();
 
       // Connect to MinIO with new config
       minioService.connect(minioConfig);
@@ -70,7 +70,18 @@ class ConfigHandler {
     );
   }
 
-  Future<void> _persistConfig() async {
+  /// GET /api/bucket — return current bucket info (used by Odoo test connection)
+  Future<Response> handleGetBucket(Request request) async {
+    return Response.ok(
+      jsonEncode({
+        'bucket': minioConfig.bucket.isNotEmpty ? minioConfig.bucket : 'odoo-documents',
+        'alias': 'minio',
+      }),
+      headers: {'Content-Type': 'application/json'},
+    );
+  }
+
+  Future<void> persistConfig() async {
     try {
       final exePath = Platform.resolvedExecutable;
       final configPath = '${File(exePath).parent.path}/config.json';

@@ -15,7 +15,7 @@ class MinioService {
       final hostPort = config.endpoint.replaceFirst('https://', '').replaceFirst('http://', '');
       var host = hostPort;
       int? port;
-      
+
       if (hostPort.contains(':')) {
         final parts = hostPort.split(':');
         host = parts[0];
@@ -38,6 +38,46 @@ class MinioService {
     }
   }
 
+  /// Upload a single file to MinIO with per-byte progress callback.
+  /// [onBytesUploaded] is called with number of bytes read on each chunk.
+  /// Returns the actual object name used in MinIO.
+  Future<String> uploadFileWithProgress(
+    String localPath,
+    String objectName, {
+    void Function(int bytesRead)? onBytesUploaded,
+  }) async {
+    if (_minio == null || _bucket == null) {
+      throw Exception('MinIO not connected');
+    }
+
+    final file = File(localPath);
+    if (!await file.exists()) {
+      throw Exception('File not found: $localPath');
+    }
+
+    final size = await file.length();
+    appLogger.i('Uploading $localPath to $objectName ($size bytes)');
+
+    final stream = file.openRead();
+    final progressStream = stream.map((chunk) {
+      if (onBytesUploaded != null) {
+        onBytesUploaded(chunk.length);
+      }
+      return Uint8List.fromList(chunk);
+    });
+
+    await _minio!.putObject(
+      _bucket!,
+      objectName,
+      progressStream,
+      size: size,
+    );
+
+    appLogger.i('Upload complete: $objectName');
+    return objectName;
+  }
+
+  /// Legacy upload method for backward compatibility.
   Future<void> uploadFile(String localPath, String remotePath, UploadTask task) async {
     if (_minio == null || _bucket == null) {
       throw Exception('MinIO not connected');
@@ -50,11 +90,8 @@ class MinioService {
 
     final size = await file.length();
     appLogger.i('Uploading $localPath to $remotePath ($size bytes)');
-    
-    // minio_new supports streams out of the box
+
     final stream = file.openRead();
-    
-    // If it's a very small file or we want basic progress, we can intercept stream
     int uploaded = 0;
     final progressStream = stream.map((chunk) {
       uploaded += chunk.length;
@@ -85,7 +122,6 @@ class MinioService {
     }
 
     if (recursive) {
-      // Delete all objects under this prefix
       final prefix = path.endsWith('/') ? path : '$path/';
       final objects = await _minio!.listObjectsV2(_bucket!, prefix: prefix, recursive: true).toList();
       for (var page in objects) {
@@ -104,7 +140,7 @@ class MinioService {
 
   Future<List<Map<String, dynamic>>> listObjects(String prefix) async {
     if (_minio == null || _bucket == null) return [];
-    
+
     List<Map<String, dynamic>> items = [];
     try {
       final objects = await _minio!.listObjectsV2(_bucket!, prefix: prefix).toList();

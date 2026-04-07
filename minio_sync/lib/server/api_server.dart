@@ -107,6 +107,7 @@ void startApiServer(ServerConfig config) async {
   // Config & System
   router.post('/api/config/auto_set', configHandler.handleAutoSet);
   router.get('/api/config', configHandler.handleGetConfig);
+  router.get('/api/bucket', configHandler.handleGetBucket);
   router.get('/api/system/status', systemHandler.handleStatus);
   router.get('/api/system/update_check', updateHandler.handleUpdateCheck);
   router.post('/api/system/update', updateHandler.handleUpdate);
@@ -119,13 +120,64 @@ void startApiServer(ServerConfig config) async {
   // Pick sync (native file dialog)
   router.post('/api/pick_sync', pickHandler.handlePickSync);
 
+  // Middleware: auto-sync MinIO config from request headers (sent by Odoo JS)
+  Middleware configSyncMiddleware() {
+    return (Handler innerHandler) {
+      return (Request request) async {
+        final minioEndpoint = request.headers['x-minio-endpoint'];
+        final minioBucket = request.headers['x-minio-bucket'];
+
+        // Only process if headers are present and non-empty
+        if (minioEndpoint != null && minioEndpoint.isNotEmpty) {
+          final headerConfig = MinioConfig(
+            endpoint: minioEndpoint,
+            accessKey: request.headers['x-minio-access-key'] ?? '',
+            secretKey: request.headers['x-minio-secret-key'] ?? '',
+            bucket: minioBucket ?? '',
+            secure: request.headers['x-minio-secure'] == 'true',
+          );
+
+          final odooUrl = request.headers['x-odoo-url'];
+          final odooDb = request.headers['x-odoo-db'];
+
+          // Check if config changed
+          final currentMinio = configHandler.minioConfig;
+          final configChanged = currentMinio.endpoint != headerConfig.endpoint
+              || currentMinio.accessKey != headerConfig.accessKey
+              || currentMinio.secretKey != headerConfig.secretKey
+              || currentMinio.bucket != headerConfig.bucket
+              || currentMinio.secure != headerConfig.secure;
+
+          if (configChanged) {
+            appLogger.i('Config sync from headers: endpoint=${headerConfig.endpoint}, bucket=${headerConfig.bucket}');
+            configHandler.minioConfig = headerConfig;
+            if (odooUrl != null && odooUrl.isNotEmpty) {
+              configHandler.appConfig = configHandler.appConfig.copyWith(
+                odooUrl: odooUrl,
+                odooDb: odooDb ?? configHandler.appConfig.odooDb,
+              );
+            }
+            configHandler.persistConfig();
+            minioService.connect(headerConfig);
+          } else if (!minioService.isConnected && headerConfig.endpoint.isNotEmpty) {
+            // Config same but not connected — retry connection
+            minioService.connect(headerConfig);
+          }
+        }
+
+        return innerHandler(request);
+      };
+    };
+  }
+
   final handler = const Pipeline()
       .addMiddleware(corsHeaders(headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Origin, Content-Type, Authorization, X-Requested-With',
+        'Access-Control-Allow-Headers': 'Origin, Content-Type, Authorization, X-Requested-With, X-Odoo-Url, X-Odoo-Db, X-Minio-Endpoint, X-Minio-Access-Key, X-Minio-Secret-Key, X-Minio-Bucket, X-Minio-Secure',
       }))
       .addMiddleware(logRequests())
+      .addMiddleware(configSyncMiddleware())
       .addHandler(router.call);
 
   final server = await io.serve(handler, '127.0.0.1', config.port);

@@ -56,11 +56,60 @@ export const minioService = {
             return null;
         }
 
+        // --- Cached MinIO Config Fetcher ---
+        let minioConfigCache = null;
+        let minioConfigCacheTime = 0;
+        const MINIO_CONFIG_TTL = 30000; // 30 seconds
+
+        async function getMinioConfigFromOdoo() {
+            const now = Date.now();
+            if (minioConfigCache && (now - minioConfigCacheTime) < MINIO_CONFIG_TTL) {
+                return minioConfigCache;
+            }
+            try {
+                const configId = await orm.call('minio.config', 'get_default_config', []);
+                if (configId) {
+                    const [cfg] = await orm.read('minio.config', [configId], [
+                        'endpoint', 'backend_endpoint', 'access_key', 'secret_key', 'bucket_name'
+                    ]);
+                    if (cfg) {
+                        const ep = (cfg.endpoint || '').trim();
+                        minioConfigCache = {
+                            minio_endpoint: ep,
+                            minio_access_key: (cfg.access_key || '').trim(),
+                            minio_secret_key: (cfg.secret_key || '').trim(),
+                            minio_bucket: (cfg.bucket_name || '').trim(),
+                            minio_secure: ep.startsWith('https://') ? 'true' : 'false',
+                        };
+                        minioConfigCacheTime = now;
+                        return minioConfigCache;
+                    }
+                }
+            } catch (e) {
+                console.debug('getMinioConfigFromOdoo: failed', e);
+            }
+            return minioConfigCache; // return stale cache if fetch fails
+        }
+
         async function localFetch(endpoint, options = {}) {
             const baseUrl = await getServiceUrl() || "http://localhost:9999";
             const url = `${baseUrl}${endpoint}`;
+
+            // Always inject MinIO config headers from Odoo default active config
+            const odooConfig = await getMinioConfigFromOdoo();
+            const headers = { ...(options.headers || {}) };
+            if (odooConfig) {
+                headers['X-Odoo-Url'] = window.location.origin;
+                headers['X-Odoo-Db'] = session.db || '';
+                headers['X-Minio-Endpoint'] = odooConfig.minio_endpoint || '';
+                headers['X-Minio-Access-Key'] = odooConfig.minio_access_key || '';
+                headers['X-Minio-Secret-Key'] = odooConfig.minio_secret_key || '';
+                headers['X-Minio-Bucket'] = odooConfig.minio_bucket || '';
+                headers['X-Minio-Secure'] = odooConfig.minio_secure || 'false';
+            }
+
             try {
-                const response = await fetch(url, options);
+                const response = await fetch(url, { ...options, headers });
 
                 // Special handling for Login endpoint (401 is expected result for failed login)
                 if (endpoint === "/api/auth/login" && response.status === 401) {
@@ -118,28 +167,13 @@ export const minioService = {
 
                 const baseUrl = await getServiceUrl() || 'http://localhost:9999';
 
-                // 1. Check if Go service already has MinIO config
-                try {
-                    const statusRes = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/system/status`);
-                    if (statusRes.ok) {
-                        const status = await statusRes.json();
-                        if (status.minio_connected) {
-                            // Go service already configured and connected
-                            configSynced = true;
-                            return;
-                        }
-                    }
-                } catch (_) {
-                    // Service unreachable — will try to send config below
-                }
-
-                // 2. Fetch MinIO config from Odoo
+                // 1. Fetch MinIO config from Odoo (always, to detect config changes)
                 let minioConfig = {};
                 try {
                     const cfgResult = await orm.call('minio.config', 'get_default_config', []);
                     if (cfgResult) {
                         const [cfg] = await orm.read('minio.config', [cfgResult], [
-                            'endpoint', 'access_key', 'secret_key', 'bucket_name'
+                            'endpoint', 'backend_endpoint', 'access_key', 'secret_key', 'bucket_name'
                         ]);
                         if (cfg) {
                             const ep = (cfg.endpoint || '').trim();
@@ -154,6 +188,24 @@ export const minioService = {
                     }
                 } catch (e) {
                     console.debug('ensureConfig: could not read minio.config from Odoo', e);
+                }
+
+                // 2. Check if service already has matching config
+                try {
+                    const statusRes = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/config`);
+                    if (statusRes.ok) {
+                        const current = await statusRes.json();
+                        const ep = minioConfig.minio_endpoint || '';
+                        if (current.minio_connected
+                            && current.minio_endpoint === ep
+                            && current.minio_bucket === (minioConfig.minio_bucket || '')) {
+                            // Config matches and connected — no update needed
+                            configSynced = true;
+                            return;
+                        }
+                    }
+                } catch (_) {
+                    // Service unreachable — will try to send config below
                 }
 
                 // 3. Send to Go service

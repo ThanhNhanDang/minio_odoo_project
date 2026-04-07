@@ -402,7 +402,7 @@ class MinioConfigController(http.Controller):
             client = config.get_minio_client()
             
             # List objects
-            bucket = config.ensure_bucket(client)
+            bucket = config.get_bucket()
             objects = client.list_objects(bucket, prefix=prefix, recursive=False)
             items = []
             for obj in objects:
@@ -451,14 +451,17 @@ class MinioConfigController(http.Controller):
 
             config = request.env['minio.config'].browse(config_id)
             client = config.get_minio_client()
-            bucket_name = config.ensure_bucket(client)
+            bucket_name = config.get_bucket()
+
+            _logger.info('Download: bucket=%s, path=%s, endpoint=%s',
+                         bucket_name, path, config.backend_endpoint or config.endpoint)
 
             # stat_object to get total size (needed for Range + Content-Length)
             try:
                 stat = client.stat_object(bucket_name, path)
                 total_size = stat.size
             except Exception as stat_err:
-                _logger.error('stat_object failed: %s', stat_err)
+                _logger.error('stat_object failed for bucket=%s path=%s: %s', bucket_name, path, stat_err)
                 return request.make_response(
                     json.dumps({'error': f'File not found: {path}'}),
                     headers=[('Content-Type', 'application/json')],
@@ -554,7 +557,7 @@ class MinioConfigController(http.Controller):
 
             config = request.env['minio.config'].browse(config_id)
             client = config.get_minio_client()
-            bucket_name = config.ensure_bucket(client)
+            bucket_name = config.get_bucket()
 
             # Download first 5MB of video (enough for ffmpeg to extract a frame)
             resp = client.get_object(bucket_name, path, offset=0, length=5 * 1024 * 1024)

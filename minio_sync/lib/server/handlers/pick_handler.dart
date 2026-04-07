@@ -22,8 +22,7 @@ class PickHandler {
       final currentPath = data['current_path'] ?? '';
       final odooFolderId = data['odoo_folder_id'];
       final taskName = data['task_name'] ?? 'Upload from dialog';
-      // odoo_session available for future Odoo callback
-      // final odooSession = data['odoo_session'];
+      final odooSession = data['odoo_session'] ?? '';
 
       // Open native file dialog via PowerShell (Windows)
       List<String> paths;
@@ -48,6 +47,7 @@ class PickHandler {
         remotePath: currentPath,
         odooFolderId: odooFolderId is int ? odooFolderId : int.tryParse('$odooFolderId'),
         type: type,
+        odooSession: odooSession,
       );
       uploadQueue.addTask(task);
 
@@ -68,49 +68,84 @@ class PickHandler {
     }
   }
 
+  // --- PowerShell preambles (matching Go service quality) ---
+
+  static const _utf8Preamble = r'''
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+''';
+
+  static const _dpiPreamble = r'''
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
+Add-Type -TypeDefinition '
+using System;
+using System.Runtime.InteropServices;
+public class WinHelper {
+    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);
+}
+'
+[WinHelper]::SetProcessDPIAware() | Out-Null
+[WinHelper]::AllowSetForegroundWindow(-1) | Out-Null
+''';
+
   /// Opens a multi-select file dialog on Windows via PowerShell.
+  /// Uses DPI awareness + visual styles for crisp, modern look.
   Future<List<String>> _pickFiles() async {
     if (!Platform.isWindows) return [];
 
-    const script = r'''
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Windows.Forms
-$f = New-Object System.Windows.Forms.OpenFileDialog
-$f.Multiselect = $true
-$f.Title = "Select files to upload"
-$owner = New-Object System.Windows.Forms.Form
-$owner.TopMost = $true
-$owner.StartPosition = 'CenterScreen'
-$owner.Width = 0; $owner.Height = 0; $owner.FormBorderStyle = 'None'
-$owner.Show(); $owner.Hide()
-$result = $f.ShowDialog($owner)
-$owner.Close()
+    const script = '$_utf8Preamble$_dpiPreamble'
+        r'''
+$form = New-Object System.Windows.Forms.Form
+$form.TopMost = $true
+$form.WindowState = 'Minimized'
+$form.ShowInTaskbar = $false
+$form.Show()
+$form.Hide()
+
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Title = "Select files to upload"
+$dialog.Multiselect = $true
+$dialog.Filter = "All files (*.*)|*.*"
+$result = $dialog.ShowDialog($form)
+$form.Dispose()
 if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-  $f.FileNames | ForEach-Object { Write-Output $_ }
+  $dialog.FileNames | ForEach-Object { Write-Output $_ }
 }
 ''';
     return _runPowerShell(script);
   }
 
   /// Opens a folder dialog on Windows via PowerShell.
+  /// Uses OpenFileDialog configured for folders (modern Explorer UI with address bar,
+  /// navigation pane, search — same as Go service) instead of old FolderBrowserDialog.
   Future<List<String>> _pickFolder() async {
     if (!Platform.isWindows) return [];
 
-    const script = r'''
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Windows.Forms
-$f = New-Object System.Windows.Forms.FolderBrowserDialog
-$f.Description = "Select folder to upload"
-$f.ShowNewFolderButton = $true
-$owner = New-Object System.Windows.Forms.Form
-$owner.TopMost = $true
-$owner.StartPosition = 'CenterScreen'
-$owner.Width = 0; $owner.Height = 0; $owner.FormBorderStyle = 'None'
-$owner.Show(); $owner.Hide()
-$result = $f.ShowDialog($owner)
-$owner.Close()
+    const script = '$_utf8Preamble$_dpiPreamble'
+        r'''
+$form = New-Object System.Windows.Forms.Form
+$form.TopMost = $true
+$form.WindowState = 'Minimized'
+$form.ShowInTaskbar = $false
+$form.Show()
+$form.Hide()
+
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Title = "Select a folder to upload"
+$dialog.ValidateNames = $false
+$dialog.CheckFileExists = $false
+$dialog.CheckPathExists = $true
+$dialog.FileName = "Select Folder"
+$dialog.Filter = "Folders|no.files"
+$dialog.InitialDirectory = [Environment]::GetFolderPath("Desktop")
+$result = $dialog.ShowDialog($form)
+$form.Dispose()
 if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-  Write-Output $f.SelectedPath
+    Write-Output ([System.IO.Path]::GetDirectoryName($dialog.FileName))
 }
 ''';
     return _runPowerShell(script);

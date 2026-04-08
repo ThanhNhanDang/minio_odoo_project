@@ -130,30 +130,34 @@ if errorlevel 1 (
 REM ============================================================
 REM  PUBLISH TO GITHUB
 REM ============================================================
+
+REM Save absolute path to minio_sync dir before cd'ing away
+set SYNC_DIR=%CD%
+
 echo.
 echo ============================================================
 echo   [5/5] Creating GitHub release v%NEW_VER%...
 echo ============================================================
 
 REM Generate checksums for all assets
-echo. > build\installer\checksums.txt
-if defined WIN_INSTALLER if exist "%WIN_INSTALLER%" (
+echo. > "%SYNC_DIR%\build\installer\checksums.txt"
+if defined WIN_INSTALLER if exist "%SYNC_DIR%\%WIN_INSTALLER%" (
     echo   Checksum: %WIN_INSTALLER%
-    certutil -hashfile "%WIN_INSTALLER%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> build\installer\checksums.txt
-    echo   %WIN_INSTALLER% >> build\installer\checksums.txt
+    certutil -hashfile "%SYNC_DIR%\%WIN_INSTALLER%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> "%SYNC_DIR%\build\installer\checksums.txt"
+    echo   %WIN_INSTALLER% >> "%SYNC_DIR%\build\installer\checksums.txt"
 )
-if defined LINUX_TAR if exist "%LINUX_TAR%" (
+if defined LINUX_TAR if exist "%SYNC_DIR%\%LINUX_TAR%" (
     echo   Checksum: %LINUX_TAR%
-    certutil -hashfile "%LINUX_TAR%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> build\installer\checksums.txt
-    echo   %LINUX_TAR% >> build\installer\checksums.txt
+    certutil -hashfile "%SYNC_DIR%\%LINUX_TAR%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> "%SYNC_DIR%\build\installer\checksums.txt"
+    echo   %LINUX_TAR% >> "%SYNC_DIR%\build\installer\checksums.txt"
 )
-if defined ANDROID_APK if exist "%ANDROID_APK%" (
+if defined ANDROID_APK if exist "%SYNC_DIR%\%ANDROID_APK%" (
     echo   Checksum: %ANDROID_APK%
-    certutil -hashfile "%ANDROID_APK%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> build\installer\checksums.txt
-    echo   %ANDROID_APK% >> build\installer\checksums.txt
+    certutil -hashfile "%SYNC_DIR%\%ANDROID_APK%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> "%SYNC_DIR%\build\installer\checksums.txt"
+    echo   %ANDROID_APK% >> "%SYNC_DIR%\build\installer\checksums.txt"
 )
 
-REM Git commit + tag
+REM Git commit + tag (from minio_odoo_project root)
 echo.
 echo   Git commit + tag...
 cd /d "%~dp0..\.."
@@ -164,12 +168,12 @@ echo   Pushing to origin...
 git push origin main
 git push origin "minio-sync-v%NEW_VER%" --force
 
-REM Build asset list for gh release
+REM Build asset list for gh release (using absolute paths)
 set ASSETS=
-if defined WIN_INSTALLER if exist "minio_sync\%WIN_INSTALLER%" set ASSETS=%ASSETS% "minio_sync\%WIN_INSTALLER%"
-if defined LINUX_TAR if exist "minio_sync\%LINUX_TAR%" set ASSETS=%ASSETS% "minio_sync\%LINUX_TAR%"
-if defined ANDROID_APK if exist "minio_sync\%ANDROID_APK%" set ASSETS=%ASSETS% "minio_sync\%ANDROID_APK%"
-set ASSETS=%ASSETS% "minio_sync\build\installer\checksums.txt"
+if defined WIN_INSTALLER if exist "%SYNC_DIR%\%WIN_INSTALLER%" set ASSETS=%ASSETS% "%SYNC_DIR%\%WIN_INSTALLER%"
+if defined LINUX_TAR if exist "%SYNC_DIR%\%LINUX_TAR%" set ASSETS=%ASSETS% "%SYNC_DIR%\%LINUX_TAR%"
+if defined ANDROID_APK if exist "%SYNC_DIR%\%ANDROID_APK%" set ASSETS=%ASSETS% "%SYNC_DIR%\%ANDROID_APK%"
+set ASSETS=%ASSETS% "%SYNC_DIR%\build\installer\checksums.txt"
 
 echo.
 echo   Creating GitHub release with assets...

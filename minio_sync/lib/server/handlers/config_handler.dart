@@ -5,6 +5,7 @@ import '../../services/minio_service.dart';
 import '../../models/minio_config.dart';
 import '../../models/app_config.dart';
 import '../../utils/logger.dart';
+import '../../version.dart';
 
 class ConfigHandler {
   final MinioService minioService;
@@ -62,7 +63,7 @@ class ConfigHandler {
         'minio_bucket': minioConfig.bucket,
         'minio_secure': minioConfig.secure,
         'minio_connected': minioService.isConnected,
-        'version': appConfig.version,
+        'version': appVersion,
         'hostname': appConfig.hostname,
         'listen_addr': appConfig.listenAddr,
       }),

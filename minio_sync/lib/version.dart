@@ -1,2 +1,2 @@
 /// App version — auto-updated by publish.bat
-const String appVersion = '1.0.8';
+const String appVersion = '1.0.9';

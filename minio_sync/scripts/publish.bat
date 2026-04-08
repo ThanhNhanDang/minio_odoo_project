@@ -57,9 +57,10 @@ echo   New version:     %NEW_VER%
 echo.
 
 REM --- Update version in files ---
-echo   Updating pubspec.yaml and installer.iss...
+echo   Updating pubspec.yaml, installer.iss, and version.dart...
 powershell -Command "(Get-Content pubspec.yaml) -replace 'version: .*', 'version: %NEW_VER%+1' | Set-Content pubspec.yaml"
 powershell -Command "(Get-Content scripts\installer.iss) -replace '#define MyAppVersion .*', '#define MyAppVersion \"%NEW_VER%\"' | Set-Content scripts\installer.iss"
+powershell -Command "(Get-Content lib\version.dart) -replace 'const String appVersion = .*', 'const String appVersion = ''%NEW_VER%'';' | Set-Content lib\version.dart"
 
 REM --- Create output directory ---
 if not exist "build\installer" mkdir "build\installer"
@@ -156,7 +157,7 @@ REM Git commit + tag
 echo.
 echo   Git commit + tag...
 cd /d "%~dp0..\.."
-git add minio_sync/pubspec.yaml minio_sync/scripts/installer.iss
+git add minio_sync/pubspec.yaml minio_sync/scripts/installer.iss minio_sync/lib/version.dart
 git commit -m "release: MinIO Sync v%NEW_VER%"
 git tag -f "minio-sync-v%NEW_VER%"
 echo   Pushing to origin...

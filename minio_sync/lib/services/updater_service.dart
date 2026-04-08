@@ -68,7 +68,9 @@ class UpdaterService {
 
       final release = jsonDecode(response.body);
       final tagName = (release['tag_name'] as String?) ?? '';
-      final latestVersion = tagName.startsWith('v') ? tagName.substring(1) : tagName;
+      // Tag format: "minio-sync-v1.0.2" → extract "1.0.2"
+      final vIndex = tagName.lastIndexOf('v');
+      final latestVersion = vIndex >= 0 ? tagName.substring(vIndex + 1) : tagName;
 
       if (latestVersion.isEmpty || latestVersion == currentVersion) {
         return const UpdateInfo();

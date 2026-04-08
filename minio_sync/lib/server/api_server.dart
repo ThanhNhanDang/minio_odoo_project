@@ -17,6 +17,7 @@ import 'handlers/update_handler.dart';
 import '../services/upload_queue.dart';
 import '../services/minio_service.dart';
 import '../services/updater_service.dart';
+import '../version.dart';
 import '../models/app_config.dart';
 import '../models/minio_config.dart';
 import '../utils/logger.dart';
@@ -66,7 +67,7 @@ void startApiServer(ServerConfig config) async {
   UpdaterService? updater;
   if (appConfig.updateUrl.isNotEmpty) {
     updater = UpdaterService(
-      currentVersion: appConfig.version,
+      currentVersion: appVersion,
       repoSlug: appConfig.updateUrl,
       githubToken: appConfig.githubToken.isNotEmpty ? appConfig.githubToken : null,
     );
@@ -88,7 +89,7 @@ void startApiServer(ServerConfig config) async {
   final progressHandler = ProgressHandler(uploadQueue);
   final pickHandler = PickHandler(uploadQueue);
   final fileHandler = FileHandler(minioService);
-  final updateHandler = UpdateHandler(updater, appConfig.version);
+  final updateHandler = UpdateHandler(updater, appVersion);
 
   final router = Router();
 

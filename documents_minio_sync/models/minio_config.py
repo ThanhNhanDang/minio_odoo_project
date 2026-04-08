@@ -41,15 +41,15 @@ class MinioConfig(models.Model):
     def get_minio_client(self):
         """Get an initialized MinIO client instance."""
         self.ensure_one()
-        
+
         # Prefer backend_endpoint if set, otherwise use public endpoint
         endpoint = (self.backend_endpoint or self.endpoint or "").strip()
-        
+
         access_key = (self.access_key or "").strip()
         secret_key = (self.secret_key or "").strip()
         bucket_name = (self.bucket_name or "").strip()
         secure = False
-        
+
         # Handle cases where endpoint includes protocol
         if endpoint.startswith('https://'):
             endpoint = endpoint.replace('https://', '')
@@ -57,18 +57,63 @@ class MinioConfig(models.Model):
         elif endpoint.startswith('http://'):
             endpoint = endpoint.replace('http://', '')
             secure = False
-            
+
         # Strip trailing slashes
         endpoint = endpoint.rstrip('/')
-        
-        _logger.info("Initializing MinIO Client: Endpoint=%s, Secure=%s, Bucket=%s", 
+
+        _logger.info("Initializing MinIO Client: Endpoint=%s, Secure=%s, Bucket=%s",
                     endpoint, secure, bucket_name)
+
+        # Use a custom HTTP client with timeouts and skip SSL verification
+        # (MinIO behind reverse proxy often uses self-signed or internal certs)
+        http_client = urllib3.PoolManager(
+            timeout=urllib3.Timeout(connect=5, read=10),
+            retries=urllib3.Retry(total=2, backoff_factor=0.2),
+            cert_reqs='CERT_NONE',
+        )
 
         return Minio(
             endpoint,
             access_key=access_key,
             secret_key=secret_key,
             secure=secure,
+            http_client=http_client,
+        )
+
+    def get_presign_client(self):
+        """Get a MinIO client using the PUBLIC endpoint — for generating presigned URLs.
+        Presigned URLs must be signed with the public host so browsers can access them
+        directly (e.g. through Cloudflare). No network call is made during URL generation."""
+        self.ensure_one()
+        endpoint = (self.endpoint or "").strip()
+        access_key = (self.access_key or "").strip()
+        secret_key = (self.secret_key or "").strip()
+        secure = False
+
+        if endpoint.startswith('https://'):
+            endpoint = endpoint.replace('https://', '')
+            secure = True
+        elif endpoint.startswith('http://'):
+            endpoint = endpoint.replace('http://', '')
+            secure = False
+
+        endpoint = endpoint.rstrip('/')
+
+        # Presigned URL generation is local (no network), but the library may call
+        # _get_region once. Use a short-timeout client with no SSL verification.
+        http_client = urllib3.PoolManager(
+            timeout=urllib3.Timeout(connect=5, read=5),
+            retries=urllib3.Retry(total=1, backoff_factor=0.1),
+            cert_reqs='CERT_NONE',
+        )
+
+        return Minio(
+            endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=secure,
+            http_client=http_client,
+            region='us-east-1',  # skip region lookup
         )
 
     def get_bucket(self):

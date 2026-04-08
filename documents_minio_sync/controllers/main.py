@@ -426,9 +426,15 @@ class MinioConfigController(http.Controller):
 
 
     @http.route('/minio/api/download', type='http', auth='user', methods=['GET'])
-    def api_download(self, path=None, **kwargs):
-        """Stream file from MinIO with Range support. Never loads entire file into RAM."""
-        from werkzeug.wrappers import Response as WerkzeugResponse
+    def api_download(self, path=None, preview=None, **kwargs):
+        """Redirect to a presigned MinIO URL.
+
+        Instead of streaming the file through Odoo (which fails when MinIO is
+        behind Cloudflare), we generate a short-lived presigned URL and redirect
+        the browser so it downloads directly from MinIO.
+        """
+        from datetime import timedelta
+        import werkzeug
 
         if not path:
             return request.make_response(
@@ -438,7 +444,9 @@ class MinioConfigController(http.Controller):
             )
 
         path = unquote(path).strip().lstrip('/')
-        CHUNK_SIZE = 1024 * 1024  # 1 MB chunks for streaming
+        path = unicodedata.normalize('NFC', path)
+
+        _logger.info('api_download: path=%r', path)
 
         try:
             config_id = request.env['minio.config'].get_default_config()
@@ -450,88 +458,41 @@ class MinioConfigController(http.Controller):
                 )
 
             config = request.env['minio.config'].browse(config_id)
-            client = config.get_minio_client()
             bucket_name = config.get_bucket()
 
-            _logger.info('Download: bucket=%s, path=%s, endpoint=%s',
-                         bucket_name, path, config.backend_endpoint or config.endpoint)
+            # Generate presigned URL using the PUBLIC endpoint so the browser
+            # can reach it directly (even through Cloudflare).
+            presign_client = config.get_presign_client()
 
-            # stat_object to get total size (needed for Range + Content-Length)
-            try:
-                stat = client.stat_object(bucket_name, path)
-                total_size = stat.size
-            except Exception as stat_err:
-                _logger.error('stat_object failed for bucket=%s path=%s: %s', bucket_name, path, stat_err)
-                return request.make_response(
-                    json.dumps({'error': f'File not found: {path}'}),
-                    headers=[('Content-Type', 'application/json')],
-                    status=404
-                )
-
-            mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
             filename = sanitize_filename(path.split('/')[-1])
+            mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
 
-            def stream_minio(offset, length):
-                """Generator that streams chunks from MinIO without loading all into RAM."""
-                resp = client.get_object(bucket_name, path, offset=offset, length=length)
-                try:
-                    remaining = length
-                    while remaining > 0:
-                        chunk_size = min(CHUNK_SIZE, remaining)
-                        chunk = resp.read(chunk_size)
-                        if not chunk:
-                            break
-                        remaining -= len(chunk)
-                        yield chunk
-                finally:
-                    resp.close()
-                    resp.release_conn()
-
-            # Parse Range header
-            range_header = request.httprequest.headers.get('Range')
-            if range_header and range_header.startswith('bytes='):
-                parts = range_header[6:].split('-')
-                start = int(parts[0]) if parts[0] else 0
-                end = int(parts[1]) if len(parts) > 1 and parts[1] else total_size - 1
-                end = min(end, total_size - 1)
-                length = end - start + 1
-
-                headers = {
-                    'Content-Type': sanitize_header(mimetype),
-                    'Content-Disposition': f'inline; filename="{filename}"',
-                    'Content-Range': f'bytes {start}-{end}/{total_size}',
-                    'Content-Length': str(length),
-                    'Accept-Ranges': 'bytes',
-                    'Cache-Control': 'public, max-age=3600',
-                }
-                return WerkzeugResponse(
-                    stream_minio(start, length),
-                    status=206,
-                    headers=headers,
-                    direct_passthrough=True,
-                )
-
-            # Full download — still streamed, never loaded entirely into RAM
-            headers = {
-                'Content-Type': sanitize_header(mimetype),
-                'Content-Disposition': f'inline; filename="{filename}"',
-                'Content-Length': str(total_size),
-                'Accept-Ranges': 'bytes',
-                'Cache-Control': 'public, max-age=3600',
+            # Set response headers via presigned URL parameters
+            response_headers = {
+                'response-content-type': mimetype,
             }
-            return WerkzeugResponse(
-                stream_minio(0, total_size),
-                status=200,
-                headers=headers,
-                direct_passthrough=True,
+            # For non-preview requests, suggest download with filename
+            if not preview:
+                response_headers['response-content-disposition'] = f'attachment; filename="{filename}"'
+            else:
+                response_headers['response-content-disposition'] = f'inline; filename="{filename}"'
+
+            presigned_url = presign_client.presigned_get_object(
+                bucket_name,
+                path,
+                expires=timedelta(hours=1),
+                response_headers=response_headers,
             )
 
+            _logger.info('api_download: redirecting to presigned URL for path=%r', path)
+            return werkzeug.utils.redirect(presigned_url, 302)
+
         except Exception as e:
-            _logger.error('MinIO Download Error: %s', e, exc_info=True)
+            _logger.error('api_download error: %s', e, exc_info=True)
             return request.make_response(
-                json.dumps({'error': str(e)}),
+                json.dumps({'error': f'MinIO error: {e}'}),
                 headers=[('Content-Type', 'application/json')],
-                status=500
+                status=502
             )
 
     @http.route('/minio/api/thumbnail', type='http', auth='user', methods=['GET'])

@@ -9,10 +9,10 @@ This is a **MinIO + Odoo 17 Documents integration** project that provides two-wa
 | Layer | Technology |
 |-------|-----------|
 | **Odoo Module** | Python 3.10+, Odoo 17 Enterprise (documents module) |
-| **Client Service** | Go 1.25, Gin HTTP framework, System Tray (systray) |
+| **Client Service** | Flutter (Dart >=3.3.0), minio_new package, shelf HTTP server |
 | **Frontend** | Odoo OWL components, vanilla JS (embedded web UI) |
 | **Storage** | MinIO S3-compatible object storage |
-| **Communication** | JSON-RPC (Odoo standard), REST API (Go service), SSE (progress) |
+| **Communication** | JSON-RPC (Odoo standard), REST API (Flutter service), SSE (progress) |
 
 ## Module Structure
 
@@ -20,7 +20,7 @@ This is a **MinIO + Odoo 17 Documents integration** project that provides two-wa
 minio_odoo_project/
   documents/              # Odoo Enterprise documents module (base dependency)
   documents_minio_sync/   # Custom Odoo module - MinIO integration
-  service/                # Go client service (system tray + HTTP API)
+  minio_sync/             # Flutter client service (system tray + HTTP API, cross-platform)
   auto_backup_ym/         # Standalone Python backup tool (Flask)
   docs/                   # Architecture & migration documentation
 ```
@@ -33,23 +33,24 @@ minio_odoo_project/
 - **Controllers**: `/minio/get_config`, `/minio/api/list`, `/minio/api/download`, `/minio/api/delete`, `/minio/api/download_zip`, `/minio/sync_metadata`, `/minio/log_access`, `/minio/log_service`
 - **JS Frontend**: MinIO browser, download progress bar, document inspector patch, login dialog
 
-### 2. `service/` (Go Client Service)
-- **Entry**: `cmd/minio-service/main.go`
-- **Packages**: `internal/api`, `internal/auth`, `internal/config`, `internal/minioclient`, `internal/tasks`, `internal/upload`, `internal/tray`, `internal/updater`
-- **Listens on**: `:9999` (configurable)
-- **System tray**: Windows/macOS/Linux with systray library
+### 2. `minio_sync/` (Flutter Client Service)
+- **Framework**: Flutter (Dart >=3.3.0 <4.0.0)
+- **HTTP Server**: shelf + shelf_router (runs in Isolate on desktop, port 9999)
+- **MinIO Client**: minio_new package (v1.0.2)
+- **Desktop**: window_manager, tray_manager (system tray app)
+- **Mobile**: flutter_foreground_task (placeholder for future)
+- **Upload Pipeline**: POST /api/upload → UploadQueue (FIFO) → MinioService.uploadFile() → sync_metadata to Odoo
 
 ## Development Commands
 
 ```bash
-# Go service
-cd service
-go mod tidy
-go run ./cmd/minio-service
-
-# Build service
-make build              # Current platform
-make build-all          # Cross-compile
+# Flutter service
+cd minio_sync
+flutter pub get
+flutter run -d windows          # Desktop debug
+flutter build windows           # Desktop release
+flutter analyze                 # Lint
+flutter test                    # Tests
 
 # Odoo (from Odoo root)
 python odoo-bin -d minio --addons-path=addons -u documents_minio_sync
@@ -57,35 +58,37 @@ python odoo-bin -d minio --addons-path=addons -u documents_minio_sync
 
 ## Configuration
 
-- **Go service**: `service/config.json` (next to executable)
+- **Flutter service**: `config.json` (desktop, next to executable) or SharedPreferences (mobile)
 - **Odoo module**: `minio.config` model (Settings > MinIO Configuration)
 - **Default bucket**: `odoo-documents` / `autonsi-documents`
 
 ## Important Conventions
 
 - Odoo module follows Odoo 17 conventions (NOT Odoo 19)
-- Go service uses `zerolog` for logging, `gin` for HTTP
+- Flutter service uses shelf for HTTP, minio_new for S3 operations
 - MinIO URLs in Odoo are always rewritten to internal `/minio/api/download?path=...` format
 - Device tracking via `client_id` (UUID) registered on first connection
 - All Odoo controllers use `auth='user'` except where noted
+- Flutter HTTP server runs in a separate Dart Isolate (non-blocking UI)
+- Flutter server binds to `127.0.0.1:9999` (localhost only)
 
 ## Security Notes
 
 - MinIO credentials stored in `minio.config` model (not hardcoded)
-- Go service authenticates to Odoo via JSON-RPC session
+- Flutter service authenticates to Odoo via JSON-RPC session cookie
 - CSRF disabled on some POST routes (`csrf=False`) - known technical debt
 - `sudo()` used in device registration and log creation
 
 ## Memory Management (MANDATORY)
 
-After every code change, feature addition, bug fix, or architectural update in this project, you MUST update the project memory at `~/.claude/projects/D--workspaces-projects-odoo17-minio/memory/` to preserve context for future sessions.
+After every code change, feature addition, bug fix, or architectural update in this project, you MUST update the project memory at `~/.claude/projects/D--workspaces-projects-odoo17-demo-minio-documents/memory/` to preserve context for future sessions.
 
 **What to update:**
 - New models, fields, or API endpoints added
 - Architectural decisions and their rationale
 - Bug fixes with root cause context
 - Configuration changes or new dependencies
-- Integration changes between Odoo module, Go service, or MinIO
+- Integration changes between Odoo module, Flutter service, or MinIO
 
 **How:**
 1. Check existing memory files in the memory directory
@@ -100,6 +103,6 @@ This ensures continuity across sessions and prevents re-discovery of already-kno
 # Odoo tests
 python odoo-bin -d test_db --test-enable --test-tags=documents_minio_sync --stop-after-init
 
-# Go tests
-cd service && go test ./...
+# Flutter tests
+cd minio_sync && flutter test
 ```

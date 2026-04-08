@@ -1,0 +1,190 @@
+@echo on
+REM ============================================================
+REM  MinIO Sync - Publish New Version (Windows + Linux + Android)
+REM  Usage: publish.bat [patch|minor|major]
+REM
+REM  patch: 1.0.0 -> 1.0.1 (bug fixes)
+REM  minor: 1.0.0 -> 1.1.0 (new features)
+REM  major: 1.0.0 -> 2.0.0 (breaking changes)
+REM
+REM  Requires: gh CLI authenticated (gh auth login)
+REM  Requires: Inno Setup 6 installed (for Windows installer)
+REM ============================================================
+
+set TYPE=%1
+if "%TYPE%"=="" set TYPE=patch
+
+if not "%TYPE%"=="patch" if not "%TYPE%"=="minor" if not "%TYPE%"=="major" (
+    echo [ERROR] Invalid version type: %TYPE%
+    echo Usage: publish.bat [patch^|minor^|major]
+    pause
+    exit /b 1
+)
+
+cd /d "%~dp0.."
+
+echo.
+echo ============================================================
+echo   Publishing %TYPE% release (Windows + Linux + Android)
+echo ============================================================
+echo.
+
+REM --- Get current version from pubspec.yaml ---
+for /f "tokens=2 delims= " %%a in ('findstr /R "^version:" pubspec.yaml') do set FULL_VER=%%a
+for /f "tokens=1 delims=+" %%a in ("%FULL_VER%") do set CUR_VER=%%a
+echo   Current version: %CUR_VER%
+
+REM --- Bump version ---
+for /f "tokens=1-3 delims=." %%a in ("%CUR_VER%") do (
+    set MAJOR=%%a
+    set MINOR=%%b
+    set PATCH=%%c
+)
+
+if "%TYPE%"=="patch" set /a PATCH+=1
+if "%TYPE%"=="minor" (
+    set /a MINOR+=1
+    set PATCH=0
+)
+if "%TYPE%"=="major" (
+    set /a MAJOR+=1
+    set MINOR=0
+    set PATCH=0
+)
+
+set NEW_VER=%MAJOR%.%MINOR%.%PATCH%
+echo   New version:     %NEW_VER%
+echo.
+
+REM --- Update version in files ---
+echo   Updating pubspec.yaml and installer.iss...
+powershell -Command "(Get-Content pubspec.yaml) -replace 'version: .*', 'version: %NEW_VER%+1' | Set-Content pubspec.yaml"
+powershell -Command "(Get-Content scripts\installer.iss) -replace '#define MyAppVersion .*', '#define MyAppVersion \"%NEW_VER%\"' | Set-Content scripts\installer.iss"
+
+REM --- Create output directory ---
+if not exist "build\installer" mkdir "build\installer"
+
+REM ============================================================
+REM  WINDOWS BUILD
+REM ============================================================
+echo.
+echo ============================================================
+echo   [1/5] Building Flutter Windows release...
+echo ============================================================
+call "C:\flutter\bin\flutter.bat" build windows --release
+if errorlevel 1 (
+    echo [ERROR] Windows build failed!
+    pause
+    exit /b 1
+)
+echo   [OK] Windows build complete.
+
+echo.
+echo ============================================================
+echo   [2/5] Building Windows installer...
+echo ============================================================
+set WIN_INSTALLER=build\installer\MinIOSync-%NEW_VER%-Setup.exe
+if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (
+    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" scripts\installer.iss
+    echo   [OK] Installer: %WIN_INSTALLER%
+) else (
+    echo   [WARNING] Inno Setup not found, skipping Windows installer
+    set WIN_INSTALLER=
+)
+
+REM ============================================================
+REM  LINUX BUILD
+REM ============================================================
+echo.
+echo ============================================================
+echo   [3/5] Building Flutter Linux bundle...
+echo ============================================================
+set LINUX_TAR=build\installer\MinIOSync-%NEW_VER%-linux.tar.gz
+call "C:\flutter\bin\flutter.bat" build linux --release 2>nul
+if errorlevel 1 (
+    echo   [WARNING] Linux build failed (need Linux host or Docker). Skipping.
+    set LINUX_TAR=
+) else (
+    tar -czf "%LINUX_TAR%" -C build\linux\x64\release\bundle .
+    echo   [OK] Linux bundle: %LINUX_TAR%
+)
+
+REM ============================================================
+REM  ANDROID BUILD
+REM ============================================================
+echo.
+echo ============================================================
+echo   [4/5] Building Android APK...
+echo ============================================================
+set ANDROID_APK=build\installer\MinIOSync-%NEW_VER%.apk
+call "C:\flutter\bin\flutter.bat" build apk --release
+if errorlevel 1 (
+    echo   [WARNING] Android build failed. Skipping.
+    set ANDROID_APK=
+) else (
+    copy /Y "build\app\outputs\flutter-apk\app-release.apk" "%ANDROID_APK%" >nul
+    echo   [OK] Android APK: %ANDROID_APK%
+)
+
+REM ============================================================
+REM  PUBLISH TO GITHUB
+REM ============================================================
+echo.
+echo ============================================================
+echo   [5/5] Creating GitHub release v%NEW_VER%...
+echo ============================================================
+
+REM Generate checksums for all assets
+echo. > build\installer\checksums.txt
+if defined WIN_INSTALLER if exist "%WIN_INSTALLER%" (
+    echo   Checksum: %WIN_INSTALLER%
+    certutil -hashfile "%WIN_INSTALLER%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> build\installer\checksums.txt
+    echo   %WIN_INSTALLER% >> build\installer\checksums.txt
+)
+if defined LINUX_TAR if exist "%LINUX_TAR%" (
+    echo   Checksum: %LINUX_TAR%
+    certutil -hashfile "%LINUX_TAR%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> build\installer\checksums.txt
+    echo   %LINUX_TAR% >> build\installer\checksums.txt
+)
+if defined ANDROID_APK if exist "%ANDROID_APK%" (
+    echo   Checksum: %ANDROID_APK%
+    certutil -hashfile "%ANDROID_APK%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> build\installer\checksums.txt
+    echo   %ANDROID_APK% >> build\installer\checksums.txt
+)
+
+REM Git commit + tag
+echo.
+echo   Git commit + tag...
+cd /d "%~dp0..\.."
+git add minio_sync/pubspec.yaml minio_sync/scripts/installer.iss
+git commit -m "release: MinIO Sync v%NEW_VER%"
+git tag -f "minio-sync-v%NEW_VER%"
+echo   Pushing to origin...
+git push origin main
+git push origin "minio-sync-v%NEW_VER%" --force
+
+REM Build asset list for gh release
+set ASSETS=
+if defined WIN_INSTALLER if exist "minio_sync\%WIN_INSTALLER%" set ASSETS=%ASSETS% "minio_sync\%WIN_INSTALLER%"
+if defined LINUX_TAR if exist "minio_sync\%LINUX_TAR%" set ASSETS=%ASSETS% "minio_sync\%LINUX_TAR%"
+if defined ANDROID_APK if exist "minio_sync\%ANDROID_APK%" set ASSETS=%ASSETS% "minio_sync\%ANDROID_APK%"
+set ASSETS=%ASSETS% "minio_sync\build\installer\checksums.txt"
+
+echo.
+echo   Creating GitHub release with assets...
+echo   Assets: %ASSETS%
+gh release create "minio-sync-v%NEW_VER%" %ASSETS% ^
+    --title "MinIO Sync v%NEW_VER%" ^
+    --notes "MinIO Sync v%NEW_VER% - Windows installer, Linux bundle, Android APK"
+
+echo.
+echo ============================================================
+echo   DONE! Published MinIO Sync v%NEW_VER%
+echo ============================================================
+if defined WIN_INSTALLER echo   Windows: %WIN_INSTALLER%
+if defined LINUX_TAR echo   Linux:   %LINUX_TAR%
+if defined ANDROID_APK echo   Android: %ANDROID_APK%
+echo   https://github.com/ThanhNhanDang/minio_odoo_project/releases
+echo ============================================================
+echo.
+pause

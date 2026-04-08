@@ -49,6 +49,8 @@ class _PopupWindowState extends State<PopupWindow> with SingleTickerProviderStat
     _loadAutoStartup();
     _fetchStatus();
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => _fetchStatus());
+    // Auto-check for updates 5s after startup
+    Future.delayed(const Duration(seconds: 5), _silentUpdateCheck);
   }
 
   @override
@@ -117,8 +119,90 @@ class _PopupWindowState extends State<PopupWindow> with SingleTickerProviderStat
     }
   }
 
+  /// Silent background check — if update found, show confirmation dialog.
+  Future<void> _silentUpdateCheck() async {
+    if (!_serverRunning) return;
+    try {
+      final response = await http.get(Uri.parse('$_apiBase/api/system/update_check')).timeout(
+        const Duration(seconds: 15),
+      );
+      if (response.statusCode == 200 && mounted) {
+        final data = jsonDecode(response.body);
+        final available = data['update_available'] ?? false;
+        final version = data['latest_version'] ?? '';
+        if (available && version.isNotEmpty) {
+          setState(() {
+            _updateAvailable = true;
+            _updateVersion = version;
+          });
+          _showUpdateDialog(version);
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Show dialog asking user to update.
+  void _showUpdateDialog(String newVersion) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.system_update, color: Color(0xFF3B82F6), size: 24),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text('Update Available',
+                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Version v$newVersion is available.',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Text('Current: v$_version',
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            const Text('The app will download and install the update, then restart automatically.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Later', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _applyUpdate();
+            },
+            icon: const Icon(Icons.download_rounded, size: 16),
+            label: const Text('Update & Restart'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF3B82F6),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _applyUpdate() async {
-    _showSnack('Downloading update...', isError: false);
+    _showSnack('Downloading update v$_updateVersion...', isError: false);
     try {
       final response = await http.post(Uri.parse('$_apiBase/api/system/update')).timeout(
         const Duration(minutes: 5),

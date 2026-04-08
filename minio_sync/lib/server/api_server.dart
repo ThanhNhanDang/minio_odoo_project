@@ -73,8 +73,11 @@ void startApiServer(ServerConfig config) async {
     appLogger.i('Updater initialized: repo=${appConfig.updateUrl}');
 
     // Start background update check (30s initial, 6h recurring)
-    updater.startBackgroundCheck((info) {
+    // Only stores update info — UI will prompt user to install.
+    final updaterRef = updater;
+    updaterRef.startBackgroundCheck((info) {
       appLogger.i('Update available: ${appConfig.version} -> ${info.version}');
+      updaterRef.latestUpdate = info;
     });
   }
 

@@ -57,15 +57,24 @@ class UploadTask {
     progressController.close();
   }
 
+  /// Map UploadStatus to the status strings the Odoo JS frontend expects.
+  static const _statusMap = {
+    UploadStatus.pending: 'pending',
+    UploadStatus.uploading: 'running',
+    UploadStatus.done: 'success',
+    UploadStatus.error: 'failed',
+    UploadStatus.canceled: 'cancelled',
+  };
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'name': taskName,
+      'task_name': taskName,
       'remote_path': remotePath,
       'odoo_folder_id': odooFolderId,
       'type': type,
-      'status': status.name,
-      'error': errorText,
+      'status': _statusMap[status] ?? status.name,
+      'message': errorText,
       'percent': percentCompleted,
       'uploaded_paths': uploadedPaths,
     };

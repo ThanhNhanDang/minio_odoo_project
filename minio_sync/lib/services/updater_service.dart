@@ -32,6 +32,9 @@ class UpdaterService {
 
   Timer? _checkTimer;
 
+  /// Latest update found by background check. UI polls this.
+  UpdateInfo? latestUpdate;
+
   UpdaterService({
     required this.currentVersion,
     required this.repoSlug,
@@ -71,30 +74,32 @@ class UpdaterService {
         return const UpdateInfo();
       }
 
-      // Find matching asset for this platform
+      // Find matching asset for this platform (e.g. MinIOSync-1.0.1-Setup.exe)
       final assets = (release['assets'] as List?) ?? [];
-      final binaryName = _platformBinaryName();
+      final suffix = _platformAssetSuffix();
       String downloadUrl = '';
       String checksumUrl = '';
+      String assetName = '';
 
       for (final asset in assets) {
         final name = asset['name'] as String? ?? '';
-        if (name == binaryName) {
+        if (name.startsWith('MinIOSync-') && name.endsWith(suffix)) {
           downloadUrl = asset['browser_download_url'] as String? ?? '';
+          assetName = name;
         } else if (name == 'checksums.txt') {
           checksumUrl = asset['browser_download_url'] as String? ?? '';
         }
       }
 
       if (downloadUrl.isEmpty) {
-        appLogger.i('No binary for platform: $binaryName');
+        appLogger.i('No installer asset matching *$suffix');
         return const UpdateInfo();
       }
 
       // Fetch checksum
       String checksum = '';
       if (checksumUrl.isNotEmpty) {
-        checksum = await _fetchChecksum(checksumUrl, binaryName);
+        checksum = await _fetchChecksum(checksumUrl, assetName);
       }
 
       appLogger.i('Update available: $currentVersion -> $latestVersion');
@@ -110,19 +115,17 @@ class UpdaterService {
     }
   }
 
-  /// Download update and replace current executable.
+  /// Download update and apply per platform.
   Future<void> apply(UpdateInfo info) async {
-    final exePath = Platform.resolvedExecutable;
-    final exeDir = File(exePath).parent.path;
-
-    // Download to temp file in same directory (for atomic rename)
-    final tmpFile = File('$exeDir/minio-sync-update-${info.version}.tmp');
+    final tmpDir = Directory.systemTemp.path;
+    final downloadPath = '$tmpDir/minio-sync-update-${info.version}${_platformAssetSuffix()}';
+    final tmpFile = File(downloadPath);
 
     try {
       appLogger.i('Downloading update from ${info.downloadUrl}');
 
       final response = await http.get(Uri.parse(info.downloadUrl)).timeout(
-        const Duration(minutes: 5),
+        const Duration(minutes: 10),
       );
 
       if (response.statusCode != 200) {
@@ -144,27 +147,67 @@ class UpdaterService {
         appLogger.i('Checksum verified');
       }
 
-      // Atomic replacement: current -> .old, tmp -> current
-      final oldFile = File('$exePath.old');
-      if (await oldFile.exists()) {
-        await oldFile.delete();
+      if (Platform.isWindows) {
+        await _applyWindows(downloadPath, info);
+      } else if (Platform.isLinux) {
+        await _applyLinux(downloadPath, info);
+      } else if (Platform.isAndroid) {
+        await _applyAndroid(downloadPath, info);
       }
-      await File(exePath).rename('$exePath.old');
-      await tmpFile.rename(exePath);
-
-      appLogger.i('Update applied: ${info.version}');
     } catch (e) {
-      // Restore backup
-      final oldFile = File('$exePath.old');
-      if (await oldFile.exists() && !await File(exePath).exists()) {
-        await oldFile.rename(exePath);
-      }
       if (await tmpFile.exists()) {
         await tmpFile.delete();
       }
       rethrow;
     }
   }
+
+  /// Windows: run Inno Setup installer silently
+  Future<void> _applyWindows(String installerPath, UpdateInfo info) async {
+    appLogger.i('Launching Windows installer: $installerPath');
+    await Process.start(
+      installerPath,
+      ['/SILENT', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'],
+      mode: ProcessStartMode.detached,
+    );
+    appLogger.i('Installer launched, exiting current instance');
+    exit(0);
+  }
+
+  /// Linux: extract tar.gz over current installation, then restart
+  Future<void> _applyLinux(String tarPath, UpdateInfo info) async {
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    appLogger.i('Extracting Linux update to $exeDir');
+
+    final result = await Process.run(
+      'tar', ['-xzf', tarPath, '-C', exeDir, '--strip-components=1'],
+    );
+    if (result.exitCode != 0) {
+      throw Exception('tar extract failed: ${result.stderr}');
+    }
+
+    // Restart: launch new version and exit current
+    await Process.start(
+      Platform.resolvedExecutable, [],
+      mode: ProcessStartMode.detached,
+    );
+    appLogger.i('Linux update applied, restarting');
+    exit(0);
+  }
+
+  /// Android: save APK and open it for user to install
+  Future<void> _applyAndroid(String apkPath, UpdateInfo info) async {
+    // On Android, we can't silently install. Open the APK with the system installer.
+    // The app needs REQUEST_INSTALL_PACKAGES permission in AndroidManifest.xml.
+    appLogger.i('Android APK downloaded: $apkPath');
+    // Trigger install via intent — requires platform channel or url_launcher
+    // For now, store the path so the UI can prompt the user.
+    _pendingApkPath = apkPath;
+  }
+
+  /// Path to downloaded APK waiting for user to install (Android only).
+  String? _pendingApkPath;
+  String? get pendingApkPath => _pendingApkPath;
 
   /// Start background check: 30s initial, then every 6 hours.
   void startBackgroundCheck(void Function(UpdateInfo) onUpdateAvailable) {
@@ -185,11 +228,16 @@ class UpdaterService {
     _checkTimer?.cancel();
   }
 
-  String _platformBinaryName() {
-    if (Platform.isWindows) return 'minio-sync-windows-amd64.exe';
-    if (Platform.isMacOS) return 'minio-sync-darwin-amd64';
-    if (Platform.isLinux) return 'minio-sync-linux-amd64';
-    return 'minio-sync-unknown';
+  /// Platform-specific suffix to identify the correct asset in a GitHub release.
+  /// Windows: MinIOSync-1.0.1-Setup.exe
+  /// Linux:   MinIOSync-1.0.1-linux.tar.gz
+  /// Android: MinIOSync-1.0.1.apk
+  String _platformAssetSuffix() {
+    if (Platform.isWindows) return '-Setup.exe';
+    if (Platform.isLinux) return '-linux.tar.gz';
+    if (Platform.isAndroid) return '.apk';
+    if (Platform.isMacOS) return '-macOS.dmg';
+    return '';
   }
 
   Future<String> _fetchChecksum(String url, String binaryName) async {

@@ -59,9 +59,8 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
-[Registry]
-; Auto-startup registry entry (if user checked the option)
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: launchstartup
+; Registry: auto-startup is managed by the app itself (launchAtStartup package).
+; Do NOT touch the registry here — installer must preserve user's existing setting.
 
 [Run]
 ; Always launch after install — including silent mode (auto-update needs restart)

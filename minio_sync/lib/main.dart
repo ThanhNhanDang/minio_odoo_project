@@ -113,15 +113,21 @@ void main() async {
       await windowManager.hide();
     });
 
-    // Auto-startup: enable by default on first run.
-    // User can toggle off via UI — that choice is persisted in the registry.
+    // Auto-startup: only enable on TRUE first install (never ran before).
+    // On updates, launchAtStartup.isEnabled() reads registry — preserves user's choice.
     launchAtStartup.setup(
       appName: 'MinIO Sync',
       appPath: Platform.resolvedExecutable,
     );
-    if (isFirstRun) {
+    final alreadyRegistered = await launchAtStartup.isEnabled();
+    if (isFirstRun && !alreadyRegistered) {
+      // True first install — enable by default
       await launchAtStartup.enable();
-      appLogger.i('First run: auto-startup enabled');
+      appLogger.i('First install: auto-startup enabled');
+    } else if (alreadyRegistered) {
+      // Update: re-register with new exe path (in case install dir changed)
+      await launchAtStartup.enable();
+      appLogger.i('Update: refreshed auto-startup path');
     }
 
     await SystemTrayManager().init();

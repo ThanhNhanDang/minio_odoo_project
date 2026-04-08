@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Process;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:launch_at_startup/launch_at_startup.dart';
@@ -119,7 +120,7 @@ class _PopupWindowState extends State<PopupWindow> with SingleTickerProviderStat
     }
   }
 
-  /// Silent background check — if update found, show confirmation dialog.
+  /// Silent background check — if update found, show native OS dialog (independent of tray window).
   Future<void> _silentUpdateCheck() async {
     if (!_serverRunning) return;
     try {
@@ -135,10 +136,38 @@ class _PopupWindowState extends State<PopupWindow> with SingleTickerProviderStat
             _updateAvailable = true;
             _updateVersion = version;
           });
-          _showUpdateDialog(version);
+          // Show native Windows MessageBox — independent of tray popup visibility
+          final userAccepted = await _showNativeUpdateDialog(version);
+          if (userAccepted) {
+            _applyUpdate();
+          }
         }
       }
     } catch (_) {}
+  }
+
+  /// Show a native Windows MessageBox via PowerShell — works even when tray window is hidden.
+  Future<bool> _showNativeUpdateDialog(String newVersion) async {
+    if (!mounted) return false;
+    try {
+      final result = await Process.run('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        '''
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
+\$result = [System.Windows.Forms.MessageBox]::Show(
+  "Version v$newVersion is available (current: v$_version).`n`nDo you want to update and restart now?",
+  "MinIO Sync - Update Available",
+  [System.Windows.Forms.MessageBoxButtons]::YesNo,
+  [System.Windows.Forms.MessageBoxIcon]::Information
+)
+if (\$result -eq [System.Windows.Forms.DialogResult]::Yes) { Write-Output "YES" } else { Write-Output "NO" }
+'''
+      ]);
+      return result.stdout.toString().trim() == 'YES';
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Show dialog asking user to update.

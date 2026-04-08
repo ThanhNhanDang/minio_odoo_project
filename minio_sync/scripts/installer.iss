@@ -3,7 +3,7 @@
 ; Then compile this script with Inno Setup to create the installer.
 
 #define MyAppName "MinIO Sync"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.0.5"
 #define MyAppPublisher "AutoNSI"
 #define MyAppExeName "minio_sync.exe"
 #define MyAppDescription "MinIO Document Sync for Odoo"

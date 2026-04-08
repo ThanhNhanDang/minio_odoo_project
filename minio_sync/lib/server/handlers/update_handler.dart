@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:shelf/shelf.dart';
 import '../../services/updater_service.dart';
 import '../../utils/logger.dart';
@@ -63,21 +63,21 @@ class UpdateHandler {
         );
       }
 
-      await updater!.apply(info);
-
-      // Launch new exe and exit
-      final exePath = Platform.resolvedExecutable;
-      appLogger.i('Restarting with new version ${info.version}');
-
-      Process.start(exePath, [], mode: ProcessStartMode.detached);
-
-      // Return success then exit after short delay
-      Future.delayed(const Duration(milliseconds: 500), () => exit(0));
+      // Return success FIRST, then apply in background.
+      // apply() downloads installer, runs it silently, and exits.
+      // Installer handles kill + restart — we don't need to do it here.
+      Future.microtask(() async {
+        try {
+          await updater!.apply(info);
+        } catch (e) {
+          appLogger.e('Background update apply failed: $e');
+        }
+      });
 
       return Response.ok(
         jsonEncode({
           'success': true,
-          'message': 'Updated to ${info.version} — restarting',
+          'message': 'Downloading update ${info.version}...',
           'version': info.version,
         }),
         headers: {'Content-Type': 'application/json'},

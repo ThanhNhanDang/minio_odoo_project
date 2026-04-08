@@ -115,6 +115,7 @@ void startApiServer(ServerConfig config) async {
   router.get('/api/system/status', systemHandler.handleStatus);
   router.get('/api/system/update_check', updateHandler.handleUpdateCheck);
   router.post('/api/system/update', updateHandler.handleUpdate);
+  router.get('/api/system/update/progress', updateHandler.handleUpdateProgress);
 
   // File operations
   router.get('/api/list', fileHandler.handleList);

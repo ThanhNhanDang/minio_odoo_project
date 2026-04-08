@@ -29,6 +29,26 @@ echo   Publishing %TYPE% release (Windows + Linux + Android)
 echo ============================================================
 echo.
 
+REM --- Setup Flutter Path ---
+where flutter >nul 2>&1
+if errorlevel 1 (
+    echo [WARNING] Flutter not found in PATH.
+    if exist "D:\flutter\bin\flutter.bat" (
+        echo Adding D:\flutter\bin to PATH...
+        set "PATH=D:\flutter\bin;%PATH%"
+    ) else if exist "C:\flutter\bin\flutter.bat" (
+        echo Adding C:\flutter\bin to PATH...
+        set "PATH=C:\flutter\bin;%PATH%"
+    ) else if exist "C:\src\flutter\bin\flutter.bat" (
+        echo Adding C:\src\flutter\bin to PATH...
+        set "PATH=C:\src\flutter\bin;%PATH%"
+    ) else (
+        echo [ERROR] Flutter not found. Please add FLUTTER to PATH.
+        pause
+        exit /b 1
+    )
+)
+
 REM --- Get current version from pubspec.yaml ---
 for /f "tokens=2 delims= " %%a in ('findstr /R "^version:" pubspec.yaml') do set FULL_VER=%%a
 for /f "tokens=1 delims=+" %%a in ("%FULL_VER%") do set CUR_VER=%%a
@@ -72,7 +92,7 @@ echo.
 echo ============================================================
 echo   [1/5] Building Flutter Windows release...
 echo ============================================================
-call "C:\flutter\bin\flutter.bat" build windows --release
+call flutter build windows --release
 if errorlevel 1 (
     echo [ERROR] Windows build failed!
     pause
@@ -108,7 +128,7 @@ echo ============================================================
 echo   [4/5] Building Android APK...
 echo ============================================================
 set ANDROID_APK=build\installer\MinIOSync-%NEW_VER%.apk
-call "C:\flutter\bin\flutter.bat" build apk --release 2>nul
+call flutter build apk --release 2>nul
 if not exist "build\app\outputs\flutter-apk\app-release.apk" (
     echo   [WARNING] Android build failed or not configured. Skipping.
     set ANDROID_APK=

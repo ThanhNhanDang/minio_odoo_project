@@ -94,21 +94,11 @@ if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (
 )
 
 REM ============================================================
-REM  LINUX BUILD
+REM  LINUX BUILD (skip on Windows — need Linux host)
 REM ============================================================
 echo.
-echo ============================================================
-echo   [3/5] Building Flutter Linux bundle...
-echo ============================================================
-set LINUX_TAR=build\installer\MinIOSync-%NEW_VER%-linux.tar.gz
-call "C:\flutter\bin\flutter.bat" build linux --release 2>nul
-if errorlevel 1 (
-    echo   [WARNING] Linux build failed (need Linux host or Docker). Skipping.
-    set LINUX_TAR=
-) else (
-    tar -czf "%LINUX_TAR%" -C build\linux\x64\release\bundle .
-    echo   [OK] Linux bundle: %LINUX_TAR%
-)
+echo   [3/5] Linux build: SKIPPED (requires Linux host)
+set LINUX_TAR=
 
 REM ============================================================
 REM  ANDROID BUILD
@@ -118,9 +108,9 @@ echo ============================================================
 echo   [4/5] Building Android APK...
 echo ============================================================
 set ANDROID_APK=build\installer\MinIOSync-%NEW_VER%.apk
-call "C:\flutter\bin\flutter.bat" build apk --release
-if errorlevel 1 (
-    echo   [WARNING] Android build failed. Skipping.
+call "C:\flutter\bin\flutter.bat" build apk --release 2>nul
+if not exist "build\app\outputs\flutter-apk\app-release.apk" (
+    echo   [WARNING] Android build failed or not configured. Skipping.
     set ANDROID_APK=
 ) else (
     copy /Y "build\app\outputs\flutter-apk\app-release.apk" "%ANDROID_APK%" >nul

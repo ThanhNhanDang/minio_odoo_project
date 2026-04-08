@@ -2,11 +2,11 @@
 
 ## System Overview
 
-```
-+------------------+       +------------------+       +------------------+
-|   Odoo 17 Web    |<----->|  Go Client Svc   |<----->|   MinIO Server   |
-|   (Browser/OWL)  |       |  (System Tray)   |       |  (S3-compatible) |
-+------------------+       +------------------+       +------------------+
+```text
++------------------+       +-------------------+       +------------------+
+|   Odoo 17 Web    |<----->| Flutter Client Svc|<----->|   MinIO Server   |
+|   (Browser/OWL)  |       |   (System Tray)   |       |  (S3-compatible) |
++------------------+       +-------------------+       +------------------+
         |                          |
         |  JSON-RPC / HTTP         |  REST API (:9999)
         v                          v
@@ -20,18 +20,19 @@
 
 ### Upload Flow (Client -> MinIO -> Odoo)
 
-```
-1. User clicks "Upload" in Odoo Documents UI or Go Web UI
-2. Go service opens native file picker (zenity)
-3. Go service uploads files to MinIO bucket via S3 API
-4. Go service sends metadata to Odoo via /minio/sync_metadata (JSON-RPC)
-5. Odoo creates/updates documents.document with minio_object_name
-6. Progress streamed via SSE (/api/upload/progress/:taskId)
+```text
+1. User clicks "Upload" in Odoo Documents UI
+2. Flutter service opens native file picker (via OS dialogs)
+3. Flutter service queues the file in UploadQueue
+4. Flutter service uploads files to MinIO bucket via S3 API
+5. Flutter service sends metadata to Odoo via /minio/sync_metadata (JSON-RPC)
+6. Odoo creates/updates documents.document with minio_object_name
+7. Progress streamed/polled via /api/task/<id>
 ```
 
 ### Download Flow (Odoo -> MinIO -> Browser)
 
-```
+```text
 1. User clicks document in Odoo Documents
 2. Odoo controller /minio/api/download proxies request to MinIO
 3. MinIO returns file stream
@@ -41,7 +42,7 @@
 
 ### Browse Flow (Odoo -> MinIO)
 
-```
+```text
 1. User opens MinIO Browser in Odoo
 2. JS calls /minio/api/list?path=...
 3. Odoo controller lists objects from MinIO bucket
@@ -52,7 +53,7 @@
 
 ### Odoo Module (`documents_minio_sync`)
 
-```
+```text
 documents_minio_sync/
 ├── __manifest__.py          # Module declaration, Odoo 17
 ├── __init__.py
@@ -84,50 +85,27 @@ documents_minio_sync/
     └── views/
         ├── documents_minio_sync.js   # Main sync view
         ├── minio_browser.js          # File browser component
-        ├── minio_login_dialog.js     # Auth dialog for Go service
-        ├── minio_config_form_patch.js
-        ├── minio_file_viewer_patch.js
-        ├── minio_deletion_patch.js
-        ├── minio_document_mixin_patch.js
-        ├── minio_attachment_patch.js
-        ├── minio_kanban_record_patch.js
-        └── minio_device_list_patch.js
+        ├── minio_login_dialog.js     # Auth dialog for Flutter service
+        └── ...
 ```
 
-### Go Service (`service/`)
+### Flutter Service (`minio_sync/`)
 
-```
-service/
-├── cmd/minio-service/
-│   └── main.go              # Entrypoint: wire dependencies, start tray + HTTP
-├── internal/
-│   ├── api/
-│   │   └── server.go        # Gin HTTP router, all API handlers
-│   ├── auth/
-│   │   └── auth.go          # Odoo JSON-RPC session authentication
-│   ├── config/
-│   │   └── config.go        # Thread-safe config with file persistence
-│   ├── minioclient/
-│   │   └── client.go        # MinIO Go SDK wrapper (CRUD, list, delete)
-│   ├── tasks/
-│   │   └── manager.go       # Background task tracking + SSE pub/sub
-│   ├── upload/
-│   │   └── engine.go        # Multi-file upload pipeline + Odoo sync
-│   ├── tray/
-│   │   └── tray.go          # System tray icon + menu
-│   └── updater/
-│       └── updater.go       # Self-update: check, download, verify, apply
-├── web/
-│   ├── embed.go             # go:embed for static files
-│   └── static/              # Standalone web UI (HTML/CSS/JS)
-├── config.json              # Runtime configuration
-├── go.mod
-└── Makefile
+```text
+minio_sync/
+├── lib/
+│   ├── main.dart            # Application entrypoint & tray setup
+│   ├── models/              # Data models (AppConfig, Task, etc.)
+│   ├── server/              # Isolate HTTP Server (shelf/shelf_router)
+│   ├── services/            # MinIO Client & App Business Logic
+│   └── ui/                  # Settings UI & Desktop App Views
+├── pubspec.yaml             # Dart dependencies
+└── android/, ios/, windows/, macos/, linux/
 ```
 
 ## Model Diagram
 
-```
+```text
 minio.config (singleton)
 ├── endpoint, access_key, secret_key, bucket_name
 ├── backend_endpoint (internal network)
@@ -173,53 +151,39 @@ minio.service.log
 | `/minio/log_access` | JSON | user | Receive access logs from client |
 | `/minio/log_service` | JSON | user | Receive error logs from client |
 
-### Go Service API (REST)
+### Flutter Service API (REST)
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/api/upload` | POST | Start file upload to MinIO |
-| `/api/upload/progress/:taskId` | GET | SSE progress stream |
-| `/api/list` | GET | List MinIO objects |
-| `/api/delete` | POST | Delete objects |
-| `/api/pick_sync` | POST | Open file picker + upload |
-| `/api/download_async` | POST | Start async download |
-| `/api/tasks` | GET | List all tasks |
-| `/api/task/:id` | GET/DELETE | Get/delete task |
-| `/api/task/:id/cancel` | POST | Cancel running task |
+| `/api/upload` | POST | Start/Queue file upload to MinIO |
+| `/api/tasks` | GET | List all upload tasks |
+| `/api/task/:id` | GET | Get single task status/progress |
 | `/api/auth/login` | POST | Odoo session login |
-| `/api/auth/logout` | POST | Clear session |
-| `/api/auth/status` | GET | Auth state |
-| `/api/config/auto_set` | POST | Update Odoo URL/DB |
-| `/api/system/status` | GET | Service health + version |
-| `/api/bucket` | GET | Bucket info |
 
 ## Communication Protocols
 
-### Odoo <-> Go Service
-- Go service fetches MinIO config from Odoo via `/minio/get_config` (JSON-RPC)
-- Go service syncs upload metadata to Odoo via `/minio/sync_metadata` (JSON-RPC)
-- Go service sends logs to Odoo via `/minio/log_access`, `/minio/log_service`
-- Odoo sends device check signals via `bus.bus` (long-polling)
+### Odoo <-> Flutter Service
+- Flutter service fetches MinIO config from Odoo via `/minio/get_config` (JSON-RPC)
+- Flutter service syncs upload metadata to Odoo via `/minio/sync_metadata` (JSON-RPC)
+- Flutter service sends logs to Odoo via `/minio/log_access`, `/minio/log_service`
 
-### Go Service <-> MinIO
-- Direct S3 API calls via `minio-go/v7` SDK
+### Flutter Service <-> MinIO
+- Direct S3 API calls via `minio_new` Dart SDK
 - Operations: Upload, Download, List, Delete, BucketExists
 
-### Browser <-> Go Service
-- REST API calls from Odoo JS frontend to Go service at `:9999`
-- SSE for real-time upload progress
+### Browser <-> Flutter Service
+- REST API calls from Odoo JS frontend to Flutter service at `localhost:9999`
+- Polling for state updates of uploaded files
 
-## Concurrency Model (Go Service)
+## Concurrency Model (Flutter Service)
 
-- **Config**: `sync.RWMutex` protected, atomic updates via `Update()` + `Snapshot()`
-- **Tasks**: Mutex-protected map, SSE via buffered channels (32 capacity)
-- **Upload**: Per-file goroutine with cancellation via `context.Context` + cancel channel
-- **Auth**: RWMutex-protected session state
-- **Tray**: Runs on main thread (OS requirement), HTTP server in background goroutine
+- **Isolates**: The embedded HTTP Server runs in a separate Dart Isolate from the main UI, preventing network or file I/O operations from blocking the Desktop UI.
+- **UploadQueue**: Upload tasks are processed sequentially using an asynchronous queue (FIFO).
+- **Asynchronous Execution**: Deeply relies on `Stream` and `Future` logic for monitoring download/upload chunking and tracking progression dynamically.
 
 ## Security Architecture
 
-```
+```text
 Odoo (auth='user')
   └── Session-based authentication
   └── ACL: ir.model.access.csv
@@ -227,23 +191,24 @@ Odoo (auth='user')
       ├── minio.device: manager=CRUD
       └── logs: user=CRU (no delete)
 
-Go Service
+Flutter Service
   └── Odoo session cookie forwarded to sync calls
-  └── CORS: AllowAllOrigins (permissive for dev)
-  └── No standalone auth (relies on Odoo session)
+  └── CORS allowed from specific Odoo host ports 
+  └── Localhost-only binding (127.0.0.1:9999) restricting network exposure
 ```
 
 ## Deployment
 
-```
+```text
 Production Setup:
   MinIO Server (S3)  <------>  Odoo 17 Server
        ^                           ^
        |                           |
-       +---- Go Service (per workstation, system tray) ----+
+       +------ Flutter Service ----+
+            (per OS workstation)
 ```
 
 - MinIO server: standalone or clustered
 - Odoo server: with `documents` + `documents_minio_sync` modules installed
-- Go service: installed per client workstation, runs as system tray app
+- Flutter service: installed per client workstation, runs as system tray app natively via Windows, macOS, or Linux.
 - `backend_endpoint` on `minio.config` allows split public/internal MinIO access

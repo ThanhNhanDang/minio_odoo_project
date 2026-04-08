@@ -107,7 +107,9 @@ class _PopupWindowState extends State<PopupWindow> with SingleTickerProviderStat
           _checkingUpdate = false;
         });
         if (_updateAvailable) {
-          _showSnack('Update v$_updateVersion available!', isError: false);
+          // Show native dialog to ask user
+          final accepted = await _showNativeUpdateDialog(_updateVersion);
+          if (accepted) _applyUpdate();
         } else {
           _showSnack('Already up to date (v$_version)', isError: false);
         }
@@ -410,7 +412,10 @@ if (\$result -eq [System.Windows.Forms.DialogResult]::Yes) { Write-Output "YES" 
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
                   )
                 : _updateAvailable
-                    ? _buildSmallButton('Install', const Color(0xFF3B82F6), _applyUpdate)
+                    ? _buildSmallButton('Install', const Color(0xFF3B82F6), () async {
+                        final accepted = await _showNativeUpdateDialog(_updateVersion);
+                        if (accepted) _applyUpdate();
+                      })
                     : _buildSmallButton('Check', Colors.white10, _serverRunning ? _checkUpdate : null),
           ),
         ],

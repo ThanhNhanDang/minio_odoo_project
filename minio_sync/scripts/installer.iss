@@ -3,7 +3,7 @@
 ; Then compile this script with Inno Setup to create the installer.
 
 #define MyAppName "MinIO Sync"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3"
 #define MyAppPublisher "AutoNSI"
 #define MyAppExeName "minio_sync.exe"
 #define MyAppDescription "MinIO Document Sync for Odoo"
@@ -30,6 +30,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupIconFile=..\assets\app_icon.ico
+; Force-close running app before installing (critical for auto-update)
+CloseApplications=force
+CloseApplicationsFilter=*.exe
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -65,7 +68,21 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall
 
 [UninstallRun]
-Filename: "taskkill"; Parameters: "/F /IM {#MyAppExeName}"; Flags: runhidden
+Filename: "taskkill"; Parameters: "/F /IM {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillApp"
+
+[Code]
+// Kill running app BEFORE files are installed
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssInstall then
+  begin
+    Exec('taskkill', '/F /IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    // Small delay to ensure process fully exits and releases file locks
+    Sleep(500);
+  end;
+end;
 
 [UninstallDelete]
 Type: files; Name: "{app}\.minio_sync.lock"

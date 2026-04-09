@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:window_manager/window_manager.dart';
-import '../../main.dart' show spawnServer, killServer, serverIsolate;
+import '../../main.dart' show spawnServer, killServer, serverIsolate, gracefulExit;
 
 class PopupWindow extends StatefulWidget {
   const PopupWindow({super.key});
@@ -229,9 +229,9 @@ Start-Sleep -Seconds 6
 
                 if (status == 'installing') {
                   timer.cancel();
-                  setState(() => _isDownloadingUpdate = false);
-                  _showSnack('Updated to v$_updateVersion! Restarting...', isError: false);
                   _showNativeNotification('MinIO Sync', 'Updated to v$_updateVersion! Restarting...');
+                  // Clean up tray icon and exit gracefully
+                  await gracefulExit();
                 } else if (status == 'error') {
                   timer.cancel();
                   setState(() => _isDownloadingUpdate = false);

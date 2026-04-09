@@ -131,6 +131,12 @@ export const minioService = {
                 }
                 return response;
             } catch (error) {
+                // Detect service offline (fetch throws TypeError on network failure)
+                if (error instanceof TypeError && /fetch|network|ECONNREFUSED/i.test(error.message)) {
+                    const offlineErr = new Error("MinIO Sync service is not running");
+                    offlineErr.service_offline = true;
+                    throw offlineErr;
+                }
                 console.error("MinIO Local API Error:", error);
                 throw error;
             }

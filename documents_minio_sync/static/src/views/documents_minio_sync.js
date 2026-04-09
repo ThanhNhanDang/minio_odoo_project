@@ -7,6 +7,7 @@ import { _t } from "@web/core/l10n/translation";
 import { useService } from "@web/core/utils/hooks";
 import { MinioBrowserDialog } from "./minio_browser";
 import { MinioLoginDialog } from "./minio_login_dialog";
+import { MinioServiceOfflineDialog } from "./minio_service_offline_dialog";
 import { useState, onMounted } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { browser } from "@web/core/browser/browser";
@@ -179,6 +180,11 @@ const minioSyncMethods = {
             // Cleanup controller on error
             if (externalId) this.uploadControllers.delete(externalId);
 
+            if (error.service_offline) {
+                this._updateTask(uiTaskId, { status: 'failed', info: _t("Service not running") });
+                this.dialogService.add(MinioServiceOfflineDialog);
+                return;
+            }
             if (error.auth_required) {
                 this._updateTask(uiTaskId, { status: 'failed', info: _t("Authentication required") });
                 this.dialogService.add(MinioLoginDialog, {
@@ -264,6 +270,11 @@ const minioSyncMethods = {
                 this._updateTask(uiTaskId, { status: 'failed', info: result.message || _t("Failed starting") });
             }
         } catch (error) {
+            if (error.service_offline) {
+                this._updateTask(uiTaskId, { status: 'failed', info: _t("Service not running") });
+                this.dialogService.add(MinioServiceOfflineDialog);
+                return;
+            }
             this._updateTask(uiTaskId, { status: 'failed', info: _t("Service error") });
         }
     },
@@ -448,6 +459,11 @@ const minioSyncMethods = {
                 this._updateTask(uiTaskId, { status: 'failed', info: result.message || _t("Failed starting") });
             }
         } catch (error) {
+            if (error.service_offline) {
+                this._updateTask(uiTaskId, { status: 'failed', info: _t("Service not running") });
+                this.dialogService.add(MinioServiceOfflineDialog);
+                return;
+            }
             if (error.auth_required) {
                 this._updateTask(uiTaskId, { status: 'failed', info: _t("Authentication required") });
                 this.dialogService.add(MinioLoginDialog, {

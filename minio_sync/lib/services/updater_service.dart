@@ -189,7 +189,9 @@ class UpdaterService {
     }
   }
 
-  /// Windows: run Inno Setup installer silently
+  /// Windows: run Inno Setup installer silently.
+  /// Does NOT call exit() — the caller is responsible for graceful shutdown
+  /// so that tray icons and other resources are cleaned up first.
   Future<void> _applyWindows(String installerPath, UpdateInfo info) async {
     appLogger.i('Launching Windows installer: $installerPath');
     await Process.start(
@@ -197,8 +199,7 @@ class UpdaterService {
       ['/SILENT', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'],
       mode: ProcessStartMode.detached,
     );
-    appLogger.i('Installer launched, exiting current instance');
-    exit(0);
+    appLogger.i('Installer launched, waiting for caller to handle exit');
   }
 
   /// Linux: extract tar.gz over current installation, then restart
@@ -218,8 +219,7 @@ class UpdaterService {
       Platform.resolvedExecutable, [],
       mode: ProcessStartMode.detached,
     );
-    appLogger.i('Linux update applied, restarting');
-    exit(0);
+    appLogger.i('Linux update applied, waiting for caller to handle exit');
   }
 
   /// Android: save APK and open it for user to install
@@ -274,14 +274,25 @@ class UpdaterService {
       );
       if (response.statusCode != 200) return '';
 
-      for (final line in response.body.split('\n')) {
-        final trimmed = line.trim();
+      final lines = response.body.split('\n');
+      for (int i = 0; i < lines.length; i++) {
+        final trimmed = lines[i].trim();
         if (trimmed.contains(binaryName)) {
-          // Format: "<hash>  <filename>"
-          return trimmed.split(RegExp(r'\s+')).first;
+          final parts = trimmed.split(RegExp(r'\s+'));
+          if (parts.length >= 2 && _looksLikeHash(parts.first)) {
+            // Standard format: "<hash>  <filename>"
+            return parts.first;
+          }
+          // Legacy 2-line format: hash on previous line, filename on this line
+          if (i > 0) {
+            final prevLine = lines[i - 1].trim();
+            if (_looksLikeHash(prevLine)) return prevLine;
+          }
         }
       }
     } catch (_) {}
     return '';
   }
+
+  bool _looksLikeHash(String s) => RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(s);
 }

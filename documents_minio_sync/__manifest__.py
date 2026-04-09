@@ -48,6 +48,8 @@
             'documents_minio_sync/static/src/views/minio_browser.xml',
             'documents_minio_sync/static/src/views/minio_login_dialog.js',
             'documents_minio_sync/static/src/views/minio_login_dialog.xml',
+            'documents_minio_sync/static/src/views/minio_service_offline_dialog.js',
+            'documents_minio_sync/static/src/views/minio_service_offline_dialog.xml',
         ],
     },
     'installable': True,

@@ -1,9 +1,10 @@
-import 'dart:io';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import '../../utils/logger.dart';
+import '../../main.dart' show gracefulExit;
 
 class SystemTrayManager with TrayListener {
   static final SystemTrayManager _instance = SystemTrayManager._internal();
@@ -13,11 +14,17 @@ class SystemTrayManager with TrayListener {
   Future<void> init() async {
     appLogger.i('Initializing Tray Manager');
     trayManager.addListener(this);
-    
+
     await trayManager.setIcon(
       Platform.isWindows ? 'assets/app_icon.ico' : 'assets/app_icon.png',
     );
     await trayManager.setToolTip('Odoo MinIO Sync');
+  }
+
+  Future<void> destroy() async {
+    appLogger.i('Destroying Tray Manager');
+    trayManager.removeListener(this);
+    await trayManager.destroy();
   }
 
   @override
@@ -43,7 +50,7 @@ class SystemTrayManager with TrayListener {
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
     if (menuItem.key == 'exit') {
-      exit(0);
+      gracefulExit();
     } else if (menuItem.key == 'settings') {
       _toggleWindow();
     }

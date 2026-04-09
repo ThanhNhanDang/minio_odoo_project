@@ -82,6 +82,15 @@ void killServer() {
   appLogger.i('API Server stopped');
 }
 
+/// Clean up tray icon, server, and lock file before exiting.
+Future<void> gracefulExit() async {
+  appLogger.i('Graceful exit: cleaning up...');
+  await SystemTrayManager().destroy();
+  killServer();
+  releaseLock();
+  exit(0);
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 

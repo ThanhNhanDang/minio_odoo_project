@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="documents_minio_sync.MinioServiceOfflineDialog">
+        <Dialog title="'MinIO Sync Service'" size="'lg'">
+            <div class="p-3">
+                <!-- Alert -->
+                <div class="alert alert-warning shadow-sm mb-4">
+                    <div class="d-flex align-items-center">
+                        <i class="fa fa-exclamation-triangle fa-2x me-3 text-warning"/>
+                        <div>
+                            <strong>MinIO Sync Service is not running</strong><br/>
+                            The local sync service (localhost:9999) is required for file upload and sync operations.
+                            Please install and start the service for your platform.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Download Section -->
+                <div class="card mb-4 border-primary">
+                    <div class="card-header bg-primary text-white d-flex align-items-center">
+                        <i class="fa fa-download me-2"/>
+                        <strong>Download Installer</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex gap-2 flex-wrap">
+                            <a t-att-href="downloadUrl" class="btn btn-primary" download="MinIOSync-Setup.exe">
+                                <i class="fa fa-windows me-1"/> Download for Windows (.exe)
+                            </a>
+                            <a t-att-href="githubUrl" class="btn btn-outline-secondary" target="_blank">
+                                <i class="fa fa-github me-1"/> All releases on GitHub
+                            </a>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            <i class="fa fa-info-circle me-1"/>
+                            If the direct download is not available, use the GitHub link to get the latest version.
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Tabs for platforms -->
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#minio-tab-windows" type="button" role="tab">
+                            <i class="fa fa-windows me-1"/> Windows
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#minio-tab-linux" type="button" role="tab">
+                            <i class="fa fa-linux me-1"/> Linux
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#minio-tab-android" type="button" role="tab">
+                            <i class="fa fa-android me-1"/> Android
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <!-- Windows -->
+                    <div class="tab-pane fade show active" id="minio-tab-windows" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="fa fa-cog me-1"/> Setup Instructions</h6>
+                                <ol class="mb-0">
+                                    <li class="mb-2">
+                                        Download <strong>MinIOSync-Setup.exe</strong> using the button above
+                                    </li>
+                                    <li class="mb-2">
+                                        Run the installer (if SmartScreen warning appears, click <em>"More info"</em> then <em>"Run anyway"</em>)
+                                    </li>
+                                    <li class="mb-2">
+                                        The service will start automatically and appear in the <strong>system tray</strong>
+                                        <span class="text-muted">(bottom-right corner of the taskbar)</span>
+                                    </li>
+                                    <li class="mb-2">
+                                        Click the tray icon to verify the service is <span class="badge bg-success">Connected</span>
+                                    </li>
+                                    <li>
+                                        Return to this page and retry your operation
+                                    </li>
+                                </ol>
+                                <div class="alert alert-info mt-3 mb-0 py-2">
+                                    <i class="fa fa-lightbulb-o me-1"/>
+                                    <strong>Tip:</strong> The service starts automatically with Windows. You can toggle this in the tray app settings.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Linux -->
+                    <div class="tab-pane fade" id="minio-tab-linux" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="fa fa-terminal me-1"/> Setup Instructions</h6>
+                                <ol class="mb-0">
+                                    <li class="mb-2">
+                                        Download the Linux bundle from
+                                        <a t-att-href="githubUrl" target="_blank">GitHub Releases</a>
+                                        <code>(MinIOSync-*-linux.tar.gz)</code>
+                                    </li>
+                                    <li class="mb-2">
+                                        Extract and install:
+                                        <pre class="bg-dark text-light p-2 rounded mt-1 mb-0"><code>tar -xzf MinIOSync-*-linux.tar.gz
+cd MinIOSync
+./minio_sync</code></pre>
+                                    </li>
+                                    <li class="mb-2">
+                                        The service will appear in the system tray and listen on <code>localhost:9999</code>
+                                    </li>
+                                    <li>
+                                        Return to this page and retry your operation
+                                    </li>
+                                </ol>
+                                <div class="alert alert-info mt-3 mb-0 py-2">
+                                    <i class="fa fa-lightbulb-o me-1"/>
+                                    <strong>Tip:</strong> Add to startup applications for auto-start on login.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Android -->
+                    <div class="tab-pane fade" id="minio-tab-android" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title"><i class="fa fa-mobile me-1"/> Setup Instructions</h6>
+                                <ol class="mb-0">
+                                    <li class="mb-2">
+                                        Download the APK from
+                                        <a t-att-href="githubUrl" target="_blank">GitHub Releases</a>
+                                        <code>(MinIOSync-*.apk)</code>
+                                    </li>
+                                    <li class="mb-2">
+                                        Enable <em>"Install from unknown sources"</em> in your device settings
+                                    </li>
+                                    <li class="mb-2">
+                                        Open the downloaded APK and tap <strong>Install</strong>
+                                    </li>
+                                    <li class="mb-2">
+                                        Open the MinIO Sync app and grant required permissions
+                                    </li>
+                                    <li>
+                                        Return to this page and retry your operation
+                                    </li>
+                                </ol>
+                                <div class="alert alert-warning mt-3 mb-0 py-2">
+                                    <i class="fa fa-info-circle me-1"/>
+                                    <strong>Note:</strong> Android support is in preview. Desktop (Windows/Linux) is recommended for full functionality.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <t t-set-slot="footer">
+                <button class="btn btn-secondary" t-on-click="props.close">
+                    Close
+                </button>
+            </t>
+        </Dialog>
+    </t>
+</templates>

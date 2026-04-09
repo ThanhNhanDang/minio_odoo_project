@@ -114,6 +114,31 @@ if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (
 )
 
 REM ============================================================
+REM  CODE SIGNING (auto-creates certificate if not found)
+REM ============================================================
+set CERT_FILE=%~dp0certs\minio-sync-signing.pfx
+set CERT_PASS=MinIOSync2024
+set SIGNTOOL=C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe
+
+if defined WIN_INSTALLER if exist "%WIN_INSTALLER%" (
+    if not exist "%CERT_FILE%" (
+        echo.
+        echo   No certificate found. Creating one automatically...
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0create-cert.ps1" -Password "%CERT_PASS%"
+    )
+    if exist "%CERT_FILE%" (
+        echo.
+        echo   Signing installer with code signing certificate...
+        "%SIGNTOOL%" sign /f "%CERT_FILE%" /p "%CERT_PASS%" /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d "MinIO Sync" "%WIN_INSTALLER%"
+        if errorlevel 1 (
+            echo   [WARNING] Code signing failed! Continuing without signature.
+        ) else (
+            echo   [OK] Installer signed successfully.
+        )
+    )
+)
+
+REM ============================================================
 REM  LINUX BUILD (skip on Windows — need Linux host)
 REM ============================================================
 echo.
@@ -149,22 +174,25 @@ echo ============================================================
 echo   [5/5] Creating GitHub release v%NEW_VER%...
 echo ============================================================
 
-REM Generate checksums for all assets
+REM Generate checksums for all assets (format: "<sha256>  <filename>" per line)
 echo. > "%SYNC_DIR%\build\installer\checksums.txt"
 if defined WIN_INSTALLER if exist "%SYNC_DIR%\%WIN_INSTALLER%" (
     echo   Checksum: %WIN_INSTALLER%
-    certutil -hashfile "%SYNC_DIR%\%WIN_INSTALLER%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> "%SYNC_DIR%\build\installer\checksums.txt"
-    echo   %WIN_INSTALLER% >> "%SYNC_DIR%\build\installer\checksums.txt"
+    for /f "tokens=*" %%h in ('certutil -hashfile "%SYNC_DIR%\%WIN_INSTALLER%" SHA256 ^| findstr /v "hash" ^| findstr /v "CertUtil"') do (
+        echo %%h  MinIOSync-%NEW_VER%-Setup.exe>> "%SYNC_DIR%\build\installer\checksums.txt"
+    )
 )
 if defined LINUX_TAR if exist "%SYNC_DIR%\%LINUX_TAR%" (
     echo   Checksum: %LINUX_TAR%
-    certutil -hashfile "%SYNC_DIR%\%LINUX_TAR%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> "%SYNC_DIR%\build\installer\checksums.txt"
-    echo   %LINUX_TAR% >> "%SYNC_DIR%\build\installer\checksums.txt"
+    for /f "tokens=*" %%h in ('certutil -hashfile "%SYNC_DIR%\%LINUX_TAR%" SHA256 ^| findstr /v "hash" ^| findstr /v "CertUtil"') do (
+        echo %%h  MinIOSync-%NEW_VER%-linux.tar.gz>> "%SYNC_DIR%\build\installer\checksums.txt"
+    )
 )
 if defined ANDROID_APK if exist "%SYNC_DIR%\%ANDROID_APK%" (
     echo   Checksum: %ANDROID_APK%
-    certutil -hashfile "%SYNC_DIR%\%ANDROID_APK%" SHA256 | findstr /v "hash" | findstr /v "CertUtil" >> "%SYNC_DIR%\build\installer\checksums.txt"
-    echo   %ANDROID_APK% >> "%SYNC_DIR%\build\installer\checksums.txt"
+    for /f "tokens=*" %%h in ('certutil -hashfile "%SYNC_DIR%\%ANDROID_APK%" SHA256 ^| findstr /v "hash" ^| findstr /v "CertUtil"') do (
+        echo %%h  MinIOSync-%NEW_VER%.apk>> "%SYNC_DIR%\build\installer\checksums.txt"
+    )
 )
 
 REM Git commit + tag (from minio_odoo_project root)

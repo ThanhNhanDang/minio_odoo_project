@@ -146,12 +146,12 @@ $form.Show()
 $form.Hide()
 
 $dialog = New-Object System.Windows.Forms.OpenFileDialog
-$dialog.Title = "Select a folder to upload"
+$dialog.Title = "Select any file inside the folder to upload"
 $dialog.CheckFileExists = $false
 $dialog.CheckPathExists = $true
 $dialog.ValidateNames = $false
-$dialog.FileName = "Folder Selection"
-$dialog.Filter = "Folders|no.files"
+$dialog.FileName = "Select This Folder"
+$dialog.Filter = "All files (*.*)|*.*"
 $result = $dialog.ShowDialog($form)
 $form.Dispose()
 if ($result -eq [System.Windows.Forms.DialogResult]::OK) {

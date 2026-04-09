@@ -184,14 +184,17 @@ interface IShellItem {
 
 public class FolderPicker {
     public static string Pick(string title, IntPtr hwndOwner) {
-        var dlg = (IFileDialog)new FileOpenDialogCOM();
-        dlg.GetOptions(out uint opts);
+        IFileDialog dlg = (IFileDialog)new FileOpenDialogCOM();
+        uint opts;
+        dlg.GetOptions(out opts);
         dlg.SetOptions(opts | 0x20);
         dlg.SetTitle(title);
         int hr = dlg.Show(hwndOwner);
         if (hr != 0) return null;
-        dlg.GetResult(out IShellItem item);
-        item.GetDisplayName(0x80058000, out string path);
+        IShellItem item;
+        dlg.GetResult(out item);
+        string path;
+        item.GetDisplayName(0x80058000, out path);
         return path;
     }
 }

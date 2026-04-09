@@ -132,31 +132,12 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
   }
 
   /// Opens a modern Explorer-style folder picker on Windows via PowerShell.
-  /// Tries COM IFileDialog (modern UI) first, falls back to FolderBrowserDialog.
+  /// Uses OpenFileDialog with folder-select trick — same modern UI as file picker.
   Future<List<String>> _pickFolder() async {
     if (!Platform.isWindows) return [];
 
-    // Self-contained script: no $_dpiPreamble to avoid double Add-Type conflicts.
-    // Includes DPI awareness, COM folder picker, and FolderBrowserDialog fallback.
-    const script = r'''
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.Application]::EnableVisualStyles()
-
-try {
-    Add-Type -TypeDefinition '
-using System;
-using System.Runtime.InteropServices;
-public class DpiHelper {
-    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
-    [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);
-}
-'
-    [DpiHelper]::SetProcessDPIAware() | Out-Null
-    [DpiHelper]::AllowSetForegroundWindow(-1) | Out-Null
-} catch { }
-
+    const script = '$_utf8Preamble$_dpiPreamble'
+        r'''
 $form = New-Object System.Windows.Forms.Form
 $form.TopMost = $true
 $form.WindowState = 'Minimized'
@@ -164,100 +145,52 @@ $form.ShowInTaskbar = $false
 $form.Show()
 $form.Hide()
 
-$path = $null
-$comWorked = $false
-
-# Try modern COM IFileDialog with FOS_PICKFOLDERS
-try {
-    Add-Type -TypeDefinition '
-using System;
-using System.Runtime.InteropServices;
-
-[ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
-class FileOpenDialogCOM { }
-
-[ComImport, Guid("42F85136-DB7E-439C-85F1-E4075D135FC8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IFileDialog {
-    [PreserveSig] int Show(IntPtr hwndOwner);
-    void SetFileTypes();
-    void SetFileTypeIndex();
-    void GetFileTypeIndex();
-    void Advise();
-    void Unadvise();
-    void SetOptions(uint fos);
-    void GetOptions(out uint fos);
-    void SetDefaultFolder(IShellItem psi);
-    void SetFolder(IShellItem psi);
-    void GetFolder(out IShellItem ppsi);
-    void GetCurrentSelection(out IShellItem ppsi);
-    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string pszName);
-    void GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string pszName);
-    void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string pszTitle);
-    void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string pszText);
-    void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string pszLabel);
-    int GetResult(out IShellItem ppsi);
-}
-
-[ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-interface IShellItem {
-    void BindToHandler();
-    void GetParent();
-    [PreserveSig] int GetDisplayName(uint sigdnName, [MarshalAs(UnmanagedType.LPWStr)] out string ppszName);
-}
-
-public class FolderPicker {
-    public static string Pick(string title, IntPtr hwndOwner) {
-        var dlg = (IFileDialog)new FileOpenDialogCOM();
-        dlg.GetOptions(out uint opts);
-        dlg.SetOptions(opts | 0x20);
-        dlg.SetTitle(title);
-        int hr = dlg.Show(hwndOwner);
-        if (hr != 0) return null;
-        dlg.GetResult(out IShellItem item);
-        item.GetDisplayName(0x80058000, out string path);
-        return path;
-    }
-}
-'
-    $path = [FolderPicker]::Pick("Select a folder to upload", $form.Handle)
-    $comWorked = $true
-} catch {
-    # COM failed — use FolderBrowserDialog fallback
-    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = "Select a folder to upload"
-    $dialog.ShowNewFolderButton = $true
-    $result = $dialog.ShowDialog($form)
-    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-        $path = $dialog.SelectedPath
-    }
-}
-
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Title = "Select a folder to upload"
+$dialog.CheckFileExists = $false
+$dialog.CheckPathExists = $true
+$dialog.ValidateNames = $false
+$dialog.FileName = "Folder Selection"
+$dialog.Filter = "Folders|no.files"
+$result = $dialog.ShowDialog($form)
 $form.Dispose()
-if ($path) { Write-Output $path }
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+  Write-Output (Split-Path $dialog.FileName)
+}
 ''';
     return _runPowerShell(script);
   }
 
   Future<List<String>> _runPowerShell(String script) async {
-    final result = await Process.run(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-STA', '-Command', script],
-      stdoutEncoding: utf8,
-    );
+    // Write script to temp file and run with -File flag.
+    // This ensures -STA flag works correctly for COM dialogs.
+    final tempDir = Directory.systemTemp;
+    final scriptFile = File('${tempDir.path}/minio_pick_${DateTime.now().millisecondsSinceEpoch}.ps1');
+    await scriptFile.writeAsString(script);
 
-    if (result.exitCode != 0) {
-      final stderr = (result.stderr as String).trim();
-      appLogger.e('PowerShell dialog error (exit=${result.exitCode}): $stderr');
-      throw Exception('PowerShell failed (exit=${result.exitCode}): $stderr');
+    try {
+      final result = await Process.run(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', scriptFile.path],
+        stdoutEncoding: utf8,
+      );
+
+      if (result.exitCode != 0) {
+        final stderr = (result.stderr as String).trim();
+        appLogger.e('PowerShell dialog error (exit=${result.exitCode}): $stderr');
+        throw Exception('PowerShell failed (exit=${result.exitCode}): $stderr');
+      }
+
+      final output = (result.stdout as String).trim();
+      if (output.isEmpty) return [];
+
+      return output
+          .split('\n')
+          .map((line) => line.trim())
+          .where((line) => line.isNotEmpty)
+          .toList();
+    } finally {
+      try { await scriptFile.delete(); } catch (_) {}
     }
-
-    final output = (result.stdout as String).trim();
-    if (output.isEmpty) return [];
-
-    return output
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList();
   }
 }

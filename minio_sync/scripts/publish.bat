@@ -111,6 +111,10 @@ if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (
 ) else if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" (
     set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
 )
+REM Ensure config.json exists in Release dir (app creates it at runtime, but installer needs it)
+if not exist "build\windows\x64\runner\Release\config.json" (
+    echo {} > "build\windows\x64\runner\Release\config.json"
+)
 if defined ISCC (
     "%ISCC%" scripts\installer.iss
     echo   [OK] Installer: %WIN_INSTALLER%

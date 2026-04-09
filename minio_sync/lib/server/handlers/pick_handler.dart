@@ -95,12 +95,13 @@ using System;
 using System.Runtime.InteropServices;
 public class WinHelper {
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll", EntryPoint = "SetProcessDpiAwarenessContext")] public static extern bool SetDpiContext(IntPtr value);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);
 }
 '
-[WinHelper]::SetProcessDPIAware() | Out-Null
+try { [WinHelper]::SetDpiContext([IntPtr]::new(-4)) | Out-Null } catch { [WinHelper]::SetProcessDPIAware() | Out-Null }
 [WinHelper]::AllowSetForegroundWindow(-1) | Out-Null
 ''';
 

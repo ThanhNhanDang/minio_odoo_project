@@ -2,7 +2,7 @@ name: minio_sync
 description: "A cross-platform background service for Odoo MinIO sync"
 publish_to: 'none'
 
-version: 1.0.17+1
+version: 1.0.18+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

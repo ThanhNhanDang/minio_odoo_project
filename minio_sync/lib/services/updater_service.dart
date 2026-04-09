@@ -35,6 +35,11 @@ class UpdaterService {
   /// Latest update found by background check. UI polls this.
   UpdateInfo? latestUpdate;
 
+  /// Current update tracking state
+  String updateStatus = 'idle'; // idle, downloading, installing, error
+  double downloadProgress = 0.0;
+  String updateError = '';
+
   UpdaterService({
     required this.currentVersion,
     required this.repoSlug,
@@ -123,10 +128,15 @@ class UpdaterService {
     final downloadPath = '$tmpDir/minio-sync-update-${info.version}${_platformAssetSuffix()}';
     final tmpFile = File(downloadPath);
 
+    updateStatus = 'downloading';
+    downloadProgress = 0.0;
+    updateError = '';
+
     try {
       appLogger.i('Downloading update from ${info.downloadUrl}');
 
-      final response = await http.get(Uri.parse(info.downloadUrl)).timeout(
+      final request = http.Request('GET', Uri.parse(info.downloadUrl));
+      final response = await http.Client().send(request).timeout(
         const Duration(minutes: 10),
       );
 
@@ -134,7 +144,18 @@ class UpdaterService {
         throw Exception('Download failed: HTTP ${response.statusCode}');
       }
 
-      await tmpFile.writeAsBytes(response.bodyBytes);
+      final contentLength = response.contentLength ?? 0;
+      int downloadedBytes = 0;
+      final sink = tmpFile.openWrite();
+
+      await for (final chunk in response.stream) {
+        sink.add(chunk);
+        downloadedBytes += chunk.length;
+        if (contentLength > 0) {
+          downloadProgress = downloadedBytes / contentLength;
+        }
+      }
+      await sink.close();
 
       // Verify checksum
       if (info.checksum.isNotEmpty) {
@@ -149,6 +170,8 @@ class UpdaterService {
         appLogger.i('Checksum verified');
       }
 
+      updateStatus = 'installing';
+
       if (Platform.isWindows) {
         await _applyWindows(downloadPath, info);
       } else if (Platform.isLinux) {
@@ -157,6 +180,8 @@ class UpdaterService {
         await _applyAndroid(downloadPath, info);
       }
     } catch (e) {
+      updateStatus = 'error';
+      updateError = e.toString();
       if (await tmpFile.exists()) {
         await tmpFile.delete();
       }

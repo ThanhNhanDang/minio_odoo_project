@@ -96,4 +96,23 @@ class UpdateHandler {
       );
     }
   }
+
+  /// GET /api/system/update/progress
+  Future<Response> handleUpdateProgress(Request request) async {
+    if (updater == null) {
+      return Response(400,
+        body: jsonEncode({'error': 'Updater not configured'}),
+        headers: {'Content-Type': 'application/json'},
+      );
+    }
+
+    return Response.ok(
+      jsonEncode({
+        'status': updater!.updateStatus,
+        'progress': updater!.downloadProgress,
+        'error': updater!.updateError,
+      }),
+      headers: {'Content-Type': 'application/json'},
+    );
+  }
 }

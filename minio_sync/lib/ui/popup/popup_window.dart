@@ -34,6 +34,9 @@ class _PopupWindowState extends State<PopupWindow> with SingleTickerProviderStat
   bool _checkingUpdate = false;
   String _updateVersion = '';
   bool _updateAvailable = false;
+  bool _isDownloadingUpdate = false;
+  double _updateDownloadProgress = 0.0;
+  Timer? _updatePollTimer;
 
   late AnimationController _pulseController;
   Timer? _pollTimer;
@@ -59,6 +62,7 @@ class _PopupWindowState extends State<PopupWindow> with SingleTickerProviderStat
   void dispose() {
     _pulseController.dispose();
     _pollTimer?.cancel();
+    _updatePollTimer?.cancel();
     super.dispose();
   }
 
@@ -197,32 +201,65 @@ Start-Sleep -Seconds 6
       'Downloading update v$_updateVersion...',
     );
 
-    // Also show the popup window so snackbar feedback is visible.
-    await windowManager.show();
-    await windowManager.focus();
-    _showSnack('Downloading update v$_updateVersion...', isError: false);
+    setState(() {
+      _isDownloadingUpdate = true;
+      _updateDownloadProgress = 0.0;
+    });
 
     try {
-      // POST /api/system/update now runs the download synchronously and
-      // returns the real success/failure status.
       final response = await http.post(Uri.parse('$_apiBase/api/system/update')).timeout(
         const Duration(minutes: 10),
       );
+
       if (response.statusCode == 200 && mounted) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          _showSnack('Updated to v${data['version']}! Restarting...', isError: false);
-          _showNativeNotification('MinIO Sync', 'Updated to v${data['version']}! Restarting...');
+          // Start polling for progress
+          _updatePollTimer?.cancel();
+          _updatePollTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+            try {
+              final progResp = await http.get(Uri.parse('$_apiBase/api/system/update/progress')).timeout(
+                const Duration(seconds: 5),
+              );
+              if (progResp.statusCode == 200 && mounted) {
+                final progData = jsonDecode(progResp.body);
+                final status = progData['status'];
+                final progress = (progData['progress'] as num?)?.toDouble() ?? 0.0;
+                final errorMsg = progData['error']?.toString();
+
+                if (status == 'installing') {
+                  timer.cancel();
+                  setState(() => _isDownloadingUpdate = false);
+                  _showSnack('Updated to v$_updateVersion! Restarting...', isError: false);
+                  _showNativeNotification('MinIO Sync', 'Updated to v$_updateVersion! Restarting...');
+                } else if (status == 'error') {
+                  timer.cancel();
+                  setState(() => _isDownloadingUpdate = false);
+                  _showSnack('Update failed: $errorMsg');
+                  _showNativeNotification('MinIO Sync - Update Failed', errorMsg ?? 'Update failed');
+                } else if (status == 'downloading') {
+                  setState(() => _updateDownloadProgress = progress);
+                }
+              }
+            } catch (_) {}
+          });
         } else {
+          setState(() => _isDownloadingUpdate = false);
           final msg = data['message'] ?? 'Update failed';
           _showSnack(msg);
           _showNativeNotification('MinIO Sync - Update Failed', msg);
         }
+      } else {
+        setState(() => _isDownloadingUpdate = false);
+        _showSnack('Update failed: HTTP ${response.statusCode}');
       }
     } catch (e) {
-      final msg = 'Update failed: $e';
-      if (mounted) _showSnack(msg);
-      _showNativeNotification('MinIO Sync - Update Failed', msg);
+      if (mounted) {
+        setState(() => _isDownloadingUpdate = false);
+        final msg = 'Update failed: $e';
+        _showSnack(msg);
+        _showNativeNotification('MinIO Sync - Update Failed', msg);
+      }
     }
   }
 
@@ -378,21 +415,46 @@ Start-Sleep -Seconds 6
             ),
           ),
           const SizedBox(height: 4),
-          _buildSettingRow(
-            icon: Icons.system_update_rounded,
-            label: _updateAvailable ? 'Update to v$_updateVersion' : 'Check for updates',
-            trailing: _checkingUpdate
-                ? const SizedBox(
-                    width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
-                  )
-                : _updateAvailable
-                    ? _buildSmallButton('Install', const Color(0xFF3B82F6), () async {
-                        final accepted = await _showNativeUpdateDialog(_updateVersion);
-                        if (accepted) await _applyUpdate();
-                      })
-                    : _buildSmallButton('Check', Colors.white10, _serverRunning ? _checkUpdate : null),
-          ),
+          if (_isDownloadingUpdate)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Downloading update...', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                      Text('${(_updateDownloadProgress * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: _updateDownloadProgress,
+                    backgroundColor: Colors.white10,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                    borderRadius: BorderRadius.circular(4),
+                    minHeight: 6,
+                  ),
+                ],
+              ),
+            )
+          else
+            _buildSettingRow(
+              icon: Icons.system_update_rounded,
+              label: _updateAvailable ? 'Update to v$_updateVersion' : 'Check for updates',
+              trailing: _checkingUpdate
+                  ? const SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+                    )
+                  : _updateAvailable
+                      ? _buildSmallButton('Install', const Color(0xFF3B82F6), () async {
+                          final accepted = await _showNativeUpdateDialog(_updateVersion);
+                          if (accepted) await _applyUpdate();
+                        })
+                      : _buildSmallButton('Check', Colors.white10, _serverRunning ? _checkUpdate : null),
+            ),
         ],
       ),
     );

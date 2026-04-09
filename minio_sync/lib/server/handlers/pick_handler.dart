@@ -132,7 +132,8 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
   }
 
   /// Opens a modern Explorer-style folder picker on Windows via PowerShell.
-  /// Uses OpenFileDialog with folder-select trick — same modern UI as file picker.
+  /// Uses COM IFileDialog with FOS_PICKFOLDERS — shows only folders.
+  /// Runs via temp .ps1 file so -STA flag works for COM threading.
   Future<List<String>> _pickFolder() async {
     if (!Platform.isWindows) return [];
 
@@ -145,18 +146,60 @@ $form.ShowInTaskbar = $false
 $form.Show()
 $form.Hide()
 
-$dialog = New-Object System.Windows.Forms.OpenFileDialog
-$dialog.Title = "Select any file inside the folder to upload"
-$dialog.CheckFileExists = $false
-$dialog.CheckPathExists = $true
-$dialog.ValidateNames = $false
-$dialog.FileName = "Select This Folder"
-$dialog.Filter = "All files (*.*)|*.*"
-$result = $dialog.ShowDialog($form)
-$form.Dispose()
-if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-  Write-Output (Split-Path $dialog.FileName)
+Add-Type -TypeDefinition '
+using System;
+using System.Runtime.InteropServices;
+
+[ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
+class FileOpenDialogCOM { }
+
+[ComImport, Guid("42F85136-DB7E-439C-85F1-E4075D135FC8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IFileDialog {
+    [PreserveSig] int Show(IntPtr hwndOwner);
+    void SetFileTypes();
+    void SetFileTypeIndex();
+    void GetFileTypeIndex();
+    void Advise();
+    void Unadvise();
+    void SetOptions(uint fos);
+    void GetOptions(out uint fos);
+    void SetDefaultFolder(IShellItem psi);
+    void SetFolder(IShellItem psi);
+    void GetFolder(out IShellItem ppsi);
+    void GetCurrentSelection(out IShellItem ppsi);
+    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string pszName);
+    void GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string pszName);
+    void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string pszTitle);
+    void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string pszText);
+    void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string pszLabel);
+    int GetResult(out IShellItem ppsi);
 }
+
+[ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IShellItem {
+    void BindToHandler();
+    void GetParent();
+    [PreserveSig] int GetDisplayName(uint sigdnName, [MarshalAs(UnmanagedType.LPWStr)] out string ppszName);
+}
+
+public class FolderPicker {
+    public static string Pick(string title, IntPtr hwndOwner) {
+        var dlg = (IFileDialog)new FileOpenDialogCOM();
+        dlg.GetOptions(out uint opts);
+        dlg.SetOptions(opts | 0x20);
+        dlg.SetTitle(title);
+        int hr = dlg.Show(hwndOwner);
+        if (hr != 0) return null;
+        dlg.GetResult(out IShellItem item);
+        item.GetDisplayName(0x80058000, out string path);
+        return path;
+    }
+}
+'
+
+$path = [FolderPicker]::Pick("Select a folder to upload", $form.Handle)
+$form.Dispose()
+if ($path) { Write-Output $path }
 ''';
     return _runPowerShell(script);
   }

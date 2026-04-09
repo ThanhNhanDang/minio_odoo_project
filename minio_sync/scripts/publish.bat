@@ -105,11 +105,17 @@ echo ============================================================
 echo   [2/5] Building Windows installer...
 echo ============================================================
 set WIN_INSTALLER=build\installer\MinIOSync-%NEW_VER%-Setup.exe
+set ISCC=
 if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (
-    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" scripts\installer.iss
+    set "ISCC=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+) else if exist "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" (
+    set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
+)
+if defined ISCC (
+    "%ISCC%" scripts\installer.iss
     echo   [OK] Installer: %WIN_INSTALLER%
 ) else (
-    echo   [WARNING] Inno Setup not found, skipping Windows installer
+    echo   [ERROR] Inno Setup not found! Install it: winget install JRSoftware.InnoSetup
     set WIN_INSTALLER=
 )
 

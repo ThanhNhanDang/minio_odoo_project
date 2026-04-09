@@ -455,6 +455,9 @@ const minioSyncMethods = {
 
             } else if (result.success) {
                 this._updateTask(uiTaskId, { status: "success", info: _t("Done (Sync)") });
+            } else if (result.canceled) {
+                // User dismissed the dialog — not an error
+                this.minioState.tasks = this.minioState.tasks.filter(t => t.id !== uiTaskId);
             } else {
                 this._updateTask(uiTaskId, { status: 'failed', info: result.message || _t("Failed starting") });
             }

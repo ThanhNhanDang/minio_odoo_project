@@ -26,10 +26,22 @@ class PickHandler {
 
       // Open native file dialog via PowerShell (Windows)
       List<String> paths;
-      if (type == 'folder') {
-        paths = await _pickFolder();
-      } else {
-        paths = await _pickFiles();
+      try {
+        if (type == 'folder') {
+          paths = await _pickFolder();
+        } else {
+          paths = await _pickFiles();
+        }
+      } catch (dialogError) {
+        appLogger.e('Dialog picker failed', error: dialogError);
+        return Response.ok(
+          jsonEncode({
+            'success': false,
+            'error': true,
+            'message': 'Dialog failed: $dialogError',
+          }),
+          headers: {'Content-Type': 'application/json'},
+        );
       }
 
       if (paths.isEmpty) {
@@ -120,14 +132,44 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
   }
 
   /// Opens a modern Explorer-style folder picker on Windows via PowerShell.
-  /// Uses IFileDialog COM with FOS_PICKFOLDERS flag — same modern UI as the
-  /// file picker (address bar, navigation pane, search) but selects folders.
+  /// Tries COM IFileDialog (modern UI) first, falls back to FolderBrowserDialog.
   Future<List<String>> _pickFolder() async {
     if (!Platform.isWindows) return [];
 
-    const script = '$_utf8Preamble'
-        r'''
-Add-Type -TypeDefinition '
+    // Self-contained script: no $_dpiPreamble to avoid double Add-Type conflicts.
+    // Includes DPI awareness, COM folder picker, and FolderBrowserDialog fallback.
+    const script = r'''
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+try {
+    Add-Type -TypeDefinition '
+using System;
+using System.Runtime.InteropServices;
+public class DpiHelper {
+    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(int pid);
+}
+'
+    [DpiHelper]::SetProcessDPIAware() | Out-Null
+    [DpiHelper]::AllowSetForegroundWindow(-1) | Out-Null
+} catch { }
+
+$form = New-Object System.Windows.Forms.Form
+$form.TopMost = $true
+$form.WindowState = 'Minimized'
+$form.ShowInTaskbar = $false
+$form.Show()
+$form.Hide()
+
+$path = $null
+$comWorked = $false
+
+# Try modern COM IFileDialog with FOS_PICKFOLDERS
+try {
+    Add-Type -TypeDefinition '
 using System;
 using System.Runtime.InteropServices;
 
@@ -164,21 +206,33 @@ interface IShellItem {
 }
 
 public class FolderPicker {
-    public static string Pick(string title) {
+    public static string Pick(string title, IntPtr hwndOwner) {
         var dlg = (IFileDialog)new FileOpenDialogCOM();
         dlg.GetOptions(out uint opts);
-        dlg.SetOptions(opts | 0x20);  // FOS_PICKFOLDERS
+        dlg.SetOptions(opts | 0x20);
         dlg.SetTitle(title);
-        int hr = dlg.Show(IntPtr.Zero);
+        int hr = dlg.Show(hwndOwner);
         if (hr != 0) return null;
         dlg.GetResult(out IShellItem item);
-        item.GetDisplayName(0x80058000, out string path);  // SIGDN_FILESYSPATH
+        item.GetDisplayName(0x80058000, out string path);
         return path;
     }
 }
 '
+    $path = [FolderPicker]::Pick("Select a folder to upload", $form.Handle)
+    $comWorked = $true
+} catch {
+    # COM failed — use FolderBrowserDialog fallback
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = "Select a folder to upload"
+    $dialog.ShowNewFolderButton = $true
+    $result = $dialog.ShowDialog($form)
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        $path = $dialog.SelectedPath
+    }
+}
 
-$path = [FolderPicker]::Pick("Select a folder to upload")
+$form.Dispose()
 if ($path) { Write-Output $path }
 ''';
     return _runPowerShell(script);
@@ -187,13 +241,14 @@ if ($path) { Write-Output $path }
   Future<List<String>> _runPowerShell(String script) async {
     final result = await Process.run(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', script],
+      ['-NoProfile', '-NonInteractive', '-STA', '-Command', script],
       stdoutEncoding: utf8,
     );
 
     if (result.exitCode != 0) {
-      appLogger.e('PowerShell dialog error: ${result.stderr}');
-      return [];
+      final stderr = (result.stderr as String).trim();
+      appLogger.e('PowerShell dialog error (exit=${result.exitCode}): $stderr');
+      throw Exception('PowerShell failed (exit=${result.exitCode}): $stderr');
     }
 
     final output = (result.stdout as String).trim();

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:shelf/shelf.dart';
 import '../../services/updater_service.dart';
@@ -25,6 +24,10 @@ class UpdateHandler {
 
     try {
       final info = await updater!.checkForUpdate();
+      // Cache the result so handleUpdate() doesn't need to re-fetch
+      if (info.available) {
+        updater!.latestUpdate = info;
+      }
       return Response.ok(
         jsonEncode({
           ...info.toJson(),
@@ -51,41 +54,44 @@ class UpdateHandler {
     }
 
     try {
-      final info = await updater!.checkForUpdate();
-      if (!info.available) {
+      // Use cached update info from prior check to avoid redundant GitHub API
+      // call (which can fail due to rate limiting on unauthenticated requests).
+      final info = updater!.latestUpdate;
+      if (info == null || !info.available) {
         return Response.ok(
           jsonEncode({
             'success': false,
-            'message': 'Already up to date',
+            'message': 'No cached update info. Please check for updates first.',
             'version': currentVersion,
           }),
           headers: {'Content-Type': 'application/json'},
         );
       }
 
-      // Return success FIRST, then apply in background.
-      // apply() downloads installer, runs it silently, and exits.
-      // Installer handles kill + restart — we don't need to do it here.
-      Future.microtask(() async {
-        try {
-          await updater!.apply(info);
-        } catch (e) {
-          appLogger.e('Background update apply failed: $e');
-        }
-      });
+      // Download and apply synchronously so the caller knows the real result.
+      // apply() downloads the installer, verifies checksum, launches it, then
+      // calls exit(0).  If anything fails before the installer launches, we
+      // report the error back to the UI.
+      await updater!.apply(info);
 
+      // If apply() returned without calling exit(0) (e.g. Android stores APK
+      // for user to install manually), report success.
       return Response.ok(
         jsonEncode({
           'success': true,
-          'message': 'Downloading update ${info.version}...',
+          'message': 'Update ${info.version} applied.',
           'version': info.version,
         }),
         headers: {'Content-Type': 'application/json'},
       );
     } catch (e) {
       appLogger.e('Update failed', error: e);
-      return Response.internalServerError(
-        body: jsonEncode({'error': e.toString()}),
+      return Response.ok(
+        jsonEncode({
+          'success': false,
+          'message': 'Update failed: $e',
+          'version': currentVersion,
+        }),
         headers: {'Content-Type': 'application/json'},
       );
     }

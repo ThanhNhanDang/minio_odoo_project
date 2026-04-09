@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Process;
+import 'dart:io' show Platform, Process;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:launch_at_startup/launch_at_startup.dart';
+import 'package:window_manager/window_manager.dart';
 import '../../main.dart' show spawnServer, killServer, serverIsolate;
 
 class PopupWindow extends StatefulWidget {
@@ -107,9 +108,8 @@ class _PopupWindowState extends State<PopupWindow> with SingleTickerProviderStat
           _checkingUpdate = false;
         });
         if (_updateAvailable) {
-          // Show native dialog to ask user
           final accepted = await _showNativeUpdateDialog(_updateVersion);
-          if (accepted) _applyUpdate();
+          if (accepted) await _applyUpdate();
         } else {
           _showSnack('Already up to date (v$_version)', isError: false);
         }
@@ -138,10 +138,9 @@ class _PopupWindowState extends State<PopupWindow> with SingleTickerProviderStat
             _updateAvailable = true;
             _updateVersion = version;
           });
-          // Show native Windows MessageBox — independent of tray popup visibility
           final userAccepted = await _showNativeUpdateDialog(version);
           if (userAccepted) {
-            _applyUpdate();
+            await _applyUpdate();
           }
         }
       }
@@ -172,82 +171,58 @@ if (\$result -eq [System.Windows.Forms.DialogResult]::Yes) { Write-Output "YES" 
     }
   }
 
-  /// Show dialog asking user to update.
-  void _showUpdateDialog(String newVersion) {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.system_update, color: Color(0xFF3B82F6), size: 24),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text('Update Available',
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Version v$newVersion is available.',
-              style: const TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Text('Current: v$_version',
-              style: const TextStyle(color: Colors.white38, fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            const Text('The app will download and install the update, then restart automatically.',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Later', style: TextStyle(color: Colors.white38)),
-          ),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _applyUpdate();
-            },
-            icon: const Icon(Icons.download_rounded, size: 16),
-            label: const Text('Update & Restart'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF3B82F6),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-          ),
-        ],
-      ),
-    );
+  /// Show a native Windows toast notification via PowerShell — visible even when tray window is hidden.
+  Future<void> _showNativeNotification(String title, String message) async {
+    if (!Platform.isWindows) return;
+    try {
+      await Process.run('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        '''
+Add-Type -AssemblyName System.Windows.Forms
+\$notify = New-Object System.Windows.Forms.NotifyIcon
+\$notify.Icon = [System.Drawing.SystemIcons]::Information
+\$notify.Visible = \$true
+\$notify.ShowBalloonTip(5000, "$title", "$message", [System.Windows.Forms.ToolTipIcon]::Info)
+Start-Sleep -Seconds 6
+\$notify.Dispose()
+'''
+      ]);
+    } catch (_) {}
   }
 
   Future<void> _applyUpdate() async {
+    // Show native notification immediately — visible even when tray window is hidden.
+    _showNativeNotification(
+      'MinIO Sync',
+      'Downloading update v$_updateVersion...',
+    );
+
+    // Also show the popup window so snackbar feedback is visible.
+    await windowManager.show();
+    await windowManager.focus();
     _showSnack('Downloading update v$_updateVersion...', isError: false);
+
     try {
+      // POST /api/system/update now runs the download synchronously and
+      // returns the real success/failure status.
       final response = await http.post(Uri.parse('$_apiBase/api/system/update')).timeout(
-        const Duration(minutes: 5),
+        const Duration(minutes: 10),
       );
       if (response.statusCode == 200 && mounted) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           _showSnack('Updated to v${data['version']}! Restarting...', isError: false);
+          _showNativeNotification('MinIO Sync', 'Updated to v${data['version']}! Restarting...');
         } else {
-          _showSnack(data['message'] ?? 'Update failed');
+          final msg = data['message'] ?? 'Update failed';
+          _showSnack(msg);
+          _showNativeNotification('MinIO Sync - Update Failed', msg);
         }
       }
     } catch (e) {
-      if (mounted) _showSnack('Update failed: $e');
+      final msg = 'Update failed: $e';
+      if (mounted) _showSnack(msg);
+      _showNativeNotification('MinIO Sync - Update Failed', msg);
     }
   }
 
@@ -414,7 +389,7 @@ if (\$result -eq [System.Windows.Forms.DialogResult]::Yes) { Write-Output "YES" 
                 : _updateAvailable
                     ? _buildSmallButton('Install', const Color(0xFF3B82F6), () async {
                         final accepted = await _showNativeUpdateDialog(_updateVersion);
-                        if (accepted) _applyUpdate();
+                        if (accepted) await _applyUpdate();
                       })
                     : _buildSmallButton('Check', Colors.white10, _serverRunning ? _checkUpdate : null),
           ),
